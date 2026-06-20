@@ -2,7 +2,7 @@
 
 Owns the single Tuya LAN connection (sauna.py), exposes a small HTTP API for the
 ember iOS app, controls the 'Sauna' Sonos (sonos.py), and pushes Live Activity
-updates to APNs (apns.py). Runs as a Docker container on the Homebridge Pi.
+updates via APNs (apns.py). Runs natively (systemd) on the Homebridge Pi, or in Docker.
 """
 import asyncio
 import contextlib
@@ -10,8 +10,8 @@ import logging
 import time
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi import Depends, FastAPI, Header, HTTPException
+from pydantic import BaseModel, Field
 
 import config
 from sauna import SaunaClient
@@ -20,63 +20,88 @@ from sonos import SonosController
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("emberd")
 
-OPTS = config.load()
-_s = OPTS["sauna"]
-sauna = SaunaClient(
-    ip=_s["ip"], dev_id=_s["devId"], local_key=_s["localKey"],
-    version=float(_s.get("version", 3.5)),
-    poll_interval=float(OPTS.get("server", {}).get("pollIntervalSec", 5)),
-)
-sonos = SonosController(OPTS.get("sonos", {}).get("name", "Sauna"))
-
-# APNs is optional — only wired up once you have an Apple Developer .p8
+# Runtime singletons — constructed in lifespan (no import-time I/O).
+sauna: Optional[SaunaClient] = None
+sonos: Optional[SonosController] = None
 apns = None
-_apns_cfg = OPTS.get("apns", {})
-if _apns_cfg.get("enabled"):
-    from apns import APNsClient
-    apns = APNsClient(
-        key_id=_apns_cfg["keyId"], team_id=_apns_cfg["teamId"],
-        p8_path=_apns_cfg["p8Path"], bundle_id=_apns_cfg["bundleId"],
-        sandbox=_apns_cfg.get("sandbox", True),
-    )
+_api_key: Optional[str] = None
+_heater_max_on_sec: Optional[int] = None
+_poll_interval = 5.0
 
-# in-memory state
-_activity_tokens: set[str] = set()       # per-activity APNs push tokens
+# In-memory state
+_activity_tokens: set[str] = set()
 _push_to_start_token: Optional[str] = None
-_session: Optional[dict] = None          # {"start": ts}
+_session: Optional[dict] = None
 _last_pushed_temp: Optional[int] = None
+_last_push_at = 0.0
+_heater_on_since: Optional[float] = None
+
+STALE_AFTER_SEC = 120
+KEEPALIVE_SEC = 90  # re-push before the Live Activity goes stale, even if temp unchanged
 
 
 # ---------- request models ----------
 class ControlBody(BaseModel):
     power: Optional[bool] = None
     heater: Optional[bool] = None
-    targetTempF: Optional[int] = None
-    timerMin: Optional[int] = None
+    targetTempF: Optional[int] = Field(None, ge=60, le=175)   # Eclipse 2 tops out ~165°F
+    timerMin: Optional[int] = Field(None, ge=0, le=360)
     chromoColor: Optional[str] = None
     chromoCycle: Optional[bool] = None
     footwell: Optional[bool] = None
 
 
 class AudioBody(BaseModel):
-    action: str            # play | pause | next | prev | volume
-    volume: Optional[int] = None
+    action: str
+    volume: Optional[int] = Field(None, ge=0, le=100)
 
 
 class TokenBody(BaseModel):
     pushToken: str
 
 
+# ---------- auth ----------
+async def require_auth(authorization: Optional[str] = Header(None)):
+    """Bearer-token gate on mutating endpoints. Disabled if server.apiKey is unset."""
+    if _api_key is None:
+        return
+    if authorization != f"Bearer {_api_key}":
+        raise HTTPException(401, "unauthorized")
+
+
 # ---------- lifespan ----------
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
+    global sauna, sonos, apns, _api_key, _heater_max_on_sec, _poll_interval
+    opts = config.load()
+    s = opts["sauna"]
+    srv = opts.get("server", {})
+    _api_key = srv.get("apiKey") or None
+    _poll_interval = float(srv.get("pollIntervalSec", 5))
+    mins = srv.get("heaterMaxOnMinutes")
+    _heater_max_on_sec = int(mins) * 60 if mins else None
+
+    sauna = SaunaClient(ip=s["ip"], dev_id=s["devId"], local_key=s["localKey"],
+                        version=float(s.get("version", 3.5)), poll_interval=_poll_interval)
+    sonos = SonosController(opts.get("sonos", {}).get("name", "Sauna"))
+    acfg = opts.get("apns", {})
+    if acfg.get("enabled"):
+        from apns import APNsClient
+        apns = APNsClient(key_id=acfg["keyId"], team_id=acfg["teamId"], p8_path=acfg["p8Path"],
+                          bundle_id=acfg["bundleId"], sandbox=acfg.get("sandbox", True))
+
     await sauna.start()
-    push_task = asyncio.create_task(_push_loop())
-    log.info("emberd started (sauna %s, APNs %s)", _s["ip"], "on" if apns else "off")
+    tasks = [asyncio.create_task(_push_loop()), asyncio.create_task(_heater_watchdog())]
+    log.info("emberd started (sauna %s, APNs %s, auth %s, deadman %s)",
+             s["ip"], "on" if apns else "off", "on" if _api_key else "OFF",
+             f"{_heater_max_on_sec // 60}min" if _heater_max_on_sec else "off")
     try:
         yield
     finally:
-        push_task.cancel()
+        for t in tasks:
+            t.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await t
         await sauna.stop()
         if apns:
             await apns.close()
@@ -88,22 +113,19 @@ app = FastAPI(title="emberd", lifespan=lifespan)
 # ---------- endpoints ----------
 @app.get("/health")
 async def health():
-    return {"ok": True, "online": sauna.state()["online"]}
+    return {"ok": True, "online": sauna.state()["online"] if sauna else False}
 
 
 @app.get("/state")
 async def get_state():
     st = sauna.state()
     if _session:
-        st["session"] = {
-            "active": True,
-            "startedAt": _session["start"],
-            "elapsedSec": int(time.time() - _session["start"]),
-        }
+        st["session"] = {"active": True, "startedAt": _session["start"],
+                         "elapsedSec": int(time.time() - _session["start"])}
     return st
 
 
-@app.post("/control")
+@app.post("/control", dependencies=[Depends(require_auth)])
 async def control(body: ControlBody):
     st = sauna.state()
     try:
@@ -123,27 +145,33 @@ async def control(body: ControlBody):
             st = await sauna.set_footwell(body.footwell)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    except Exception as e:
-        raise HTTPException(502, f"sauna control failed: {e}")
+    except Exception:
+        log.exception("control failed")
+        raise HTTPException(502, "sauna control failed")
     return st
 
 
-@app.post("/audio")
+@app.post("/audio", dependencies=[Depends(require_auth)])
 async def audio(body: AudioBody):
     try:
         return await sonos.control(body.action, body.volume)
-    except Exception as e:
-        raise HTTPException(502, f"sonos control failed: {e}")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception:
+        log.exception("audio failed")
+        raise HTTPException(502, "sonos control failed")
 
 
-@app.post("/session/start")
+@app.post("/session/start", dependencies=[Depends(require_auth)])
 async def session_start():
     global _session
+    if _session:  # idempotent — don't clobber an active session's accounting
+        return {"active": True, "startedAt": _session["start"], "alreadyActive": True}
     _session = {"start": time.time()}
     return {"active": True, "startedAt": _session["start"]}
 
 
-@app.post("/session/end")
+@app.post("/session/end", dependencies=[Depends(require_auth)])
 async def session_end():
     global _session
     if not _session:
@@ -152,41 +180,38 @@ async def session_end():
     end = time.time()
     peak = sauna.peak_since(start)
     _session = None
-    return {
-        "startedAt": start,
-        "endedAt": end,
-        "durationSec": int(end - start),
-        "peakTempF": peak,
-    }
+    return {"startedAt": start, "endedAt": end, "durationSec": int(end - start), "peakTempF": peak}
 
 
-@app.post("/activity/token")
+@app.post("/activity/token", dependencies=[Depends(require_auth)])
 async def register_activity_token(body: TokenBody):
     _activity_tokens.add(body.pushToken)
     return {"registered": len(_activity_tokens)}
 
 
-@app.post("/activity/start-token")
+@app.post("/activity/start-token", dependencies=[Depends(require_auth)])
 async def register_push_to_start(body: TokenBody):
     global _push_to_start_token
     _push_to_start_token = body.pushToken
     return {"ok": True}
 
 
-# ---------- background APNs push ----------
+# ---------- background tasks ----------
 async def _push_loop():
-    """Push temperature updates to registered Live Activities when it changes."""
-    global _last_pushed_temp
+    """Push temperature to Live Activities on change, plus a keep-alive before stale."""
+    global _last_pushed_temp, _last_push_at
     while True:
         try:
-            await asyncio.sleep(float(OPTS.get("server", {}).get("pollIntervalSec", 5)))
+            await asyncio.sleep(_poll_interval)
             if not apns or not _activity_tokens:
                 continue
             st = sauna.state()
             temp = st.get("currentTempF")
-            if temp is None or temp == _last_pushed_temp:
+            if temp is None:
                 continue
-            _last_pushed_temp = temp
+            now = time.time()
+            if temp == _last_pushed_temp and (now - _last_push_at) < KEEPALIVE_SEC:
+                continue
             content = {
                 "currentTempF": temp,
                 "targetTempF": st.get("targetTempF"),
@@ -195,13 +220,48 @@ async def _push_loop():
                 "timerRemainingMin": st.get("timerRemainingMin"),
                 "online": st.get("online"),
             }
-            dead = set()
+            sent_ok = False
+            dead: set[str] = set()
             for tok in list(_activity_tokens):
-                code = await apns.update_activity(tok, content, priority=5)
-                if code in (400, 410):  # bad/expired token
-                    dead.add(tok)
+                try:
+                    status, text = await apns.update_activity(
+                        tok, content, priority=5, stale_after_sec=STALE_AFTER_SEC)
+                    sent_ok = sent_ok or status == 200
+                    if status == 410 or (status == 400 and
+                                         ("BadDeviceToken" in text or "DeviceTokenNotForTopic" in text)):
+                        dead.add(tok)
+                except Exception as e:
+                    log.warning("APNs send failed for %s…: %s", tok[:8], e)
             _activity_tokens.difference_update(dead)
+            if sent_ok:  # only advance dedupe after a successful round
+                _last_pushed_temp = temp
+                _last_push_at = now
         except asyncio.CancelledError:
             raise
         except Exception as e:
             log.warning("push loop error: %s", e)
+
+
+async def _heater_watchdog():
+    """Optional safety deadman: auto-off the heater if left on past server.heaterMaxOnMinutes."""
+    global _heater_on_since
+    if _heater_max_on_sec is None:
+        return  # disabled by default
+    while True:
+        try:
+            await asyncio.sleep(30)
+            on = sauna.state().get("heater")
+            if not on:
+                _heater_on_since = None
+                continue
+            if _heater_on_since is None:
+                _heater_on_since = time.time()
+            elif time.time() - _heater_on_since >= _heater_max_on_sec:
+                log.warning("heater on > %ss — deadman auto-off", _heater_max_on_sec)
+                with contextlib.suppress(Exception):
+                    await sauna.set_heater(False)
+                _heater_on_since = None
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.warning("watchdog error: %s", e)

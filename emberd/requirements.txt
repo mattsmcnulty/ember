@@ -1,6 +1,6 @@
-fastapi>=0.110
-uvicorn[standard]>=0.29
-tinytuya>=1.13
-httpx[http2]>=0.27
-PyJWT[crypto]>=2.8
-soco>=0.30
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.29,<1.0
+tinytuya>=1.13,<2.0
+httpx[http2]>=0.27,<1.0
+PyJWT[crypto]>=2.8,<3.0
+soco>=0.30,<1.0

@@ -37,6 +37,17 @@ curl http://localhost:8765/state
 > ⚠ **Single connection:** don't run any other local Tuya client against the sauna
 > (HA `tuya-local`, a second script), and keep the OEM Sun Home app closed during local use.
 
+## Security & safety
+`/control` can **turn the heater on** — treat the API as privileged:
+- Set `server.apiKey` in `options.json` to a long random string. emberd then requires
+  `Authorization: Bearer <apiKey>` on all mutating endpoints (`/control`, `/audio`,
+  `/session/*`, `/activity/*`); `/state` and `/health` stay open. (Null = auth off, dev only.)
+- emberd binds `0.0.0.0:8765`. Keep it on a trusted LAN/VLAN; firewall tcp/8765 to your subnet
+  (and reach it remotely via Tailscale, not a port-forward).
+- `targetTempF` is clamped to 60–175 °F and `timerMin` to 0–360 at the API.
+- Optional **deadman**: set `server.heaterMaxOnMinutes` to auto-off the heater if it's left on
+  past that many minutes (null = disabled). The sauna's own timer is the primary cutoff.
+
 ## HTTP API
 | Method | Path | Body | Notes |
 |---|---|---|---|
