@@ -1,0 +1,29 @@
+# ── Phase-0 reverse-engineering scratch ──
+# Kept on disk as a re-extraction safety net (see plan: Phase 0 Cleanup), never committed.
+tools/phase0/
+
+# ── Secrets — never commit ──
+**/devices.json        # holds the Tuya localKey
+**/options.json        # emberd runtime config (devId / localKey / APNs)
+*.p8                   # APNs auth key
+.env
+.env.*
+
+# ── Python ──
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# ── iOS / Xcode (ember/) ──
+**/xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+*.ipa
+*.dSYM/
+.build/
+Pods/
+
+# ── macOS ──
+.DS_Store
