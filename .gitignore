@@ -3,9 +3,11 @@
 tools/phase0/
 
 # ── Secrets — never commit ──
-**/devices.json        # holds the Tuya localKey
-**/options.json        # emberd runtime config (devId / localKey / APNs)
-*.p8                   # APNs auth key
+# (devices.json = Tuya localKey; options.json = runtime config w/ localKey; *.p8 = APNs key)
+# NOTE: gitignore has no inline comments — keep patterns on their own lines.
+**/devices.json
+**/options.json
+*.p8
 .env
 .env.*
 
