@@ -1,0 +1,15 @@
+services:
+  emberd:
+    build: .
+    image: emberd:latest
+    container_name: emberd
+    restart: unless-stopped
+    # host networking: required so soco (Sonos SSDP multicast) and Tuya LAN work,
+    # and so emberd is reachable at <pi-ip>:8765. Works on the Pi (Linux).
+    network_mode: host
+    environment:
+      - EMBERD_OPTIONS=/data/options.json
+    volumes:
+      - ./options.json:/data/options.json:ro
+      # Uncomment once you add an APNs key for Live Activities:
+      # - ./AuthKey.p8:/data/AuthKey.p8:ro

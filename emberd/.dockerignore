@@ -1,0 +1,6 @@
+options.json
+*.p8
+__pycache__/
+*.pyc
+.venv/
+data/
