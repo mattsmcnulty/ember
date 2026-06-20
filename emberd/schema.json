@@ -1,0 +1,52 @@
+{
+  "_comment": "Sun Home Eclipse 2 DP map, reverse-engineered live in Phase 1 (2026-06-20). Device identity (devId/localKey/ip) lives in the gitignored options.json, not here.",
+  "protocol": "3.5",
+  "unit_default": "F",
+  "controls": {
+    "power": {
+      "dp": "110", "type": "bool", "writable": true,
+      "note": "Unit power on/off. Interior LED comes on with power. Setting false powers the whole unit down."
+    },
+    "heater": {
+      "dp": "114", "type": "bool", "writable": true,
+      "note": "Heating element on/off — the core control. Confirmed LAN-writable."
+    },
+    "target_temp_f": {
+      "dp": "106", "type": "int", "unit": "F", "writable": true,
+      "note": "Target setpoint in Fahrenheit. Firmware may clamp out-of-range values."
+    },
+    "timer_set_min": {
+      "dp": "116", "type": "int", "unit": "min", "writable": true,
+      "note": "Session duration. Writing it resets timer_remaining (105)."
+    },
+    "footwell_light": {
+      "dp": "113", "type": "bool", "writable": true,
+      "note": "Floor/footwell light. Confirmed LAN-writable (toggled off remotely)."
+    },
+    "chromo_color": {
+      "dp": "21", "type": "enum_str", "writable": true,
+      "values": ["mode", "mode1", "mode2", "mode3", "mode4", "mode5", "mode6", "mode7", "mode8"],
+      "colors_approx": "white + yellow/red/purple/blue/light-blue/green (exact value->color order TBD — verbal cycle was approximate; earlier single test gave mode3=red)",
+      "note": "Interior ceiling LED color. Power-on resets to 'mode'."
+    },
+    "chromo_cycle": {
+      "dp": "101", "type": "bool", "writable": true,
+      "note": "Rainbow / color-cycle scene. Also brings the footwell light on while active."
+    }
+  },
+  "readonly": {
+    "current_temp_f": { "dp": "104", "type": "int", "unit": "F" },
+    "current_temp_c": { "dp": "103", "type": "int", "unit": "C", "note": "°C mirror of current temp" },
+    "target_temp_c":  { "dp": "109", "type": "int", "unit": "C", "note": "°C mirror of 106; syncs when powered" },
+    "timer_remaining_min": { "dp": "105", "type": "int", "unit": "min", "note": "Live countdown while powered." },
+    "power_status": { "dp": "20", "type": "bool", "note": "Read-only run/status flag; LAN writes ignored and it flickers. Use DP110 to control power." },
+    "unit": { "dp": "108", "type": "enum_str", "values": ["f", "c"], "note": "Display unit." }
+  },
+  "unknown": {
+    "111": { "type": "int", "value_seen": 30, "note": "Purpose unknown — never changed during mapping. Possibly a config/limit." }
+  },
+  "not_controllable": {
+    "exterior_light": "Panel-only — toggling it at the panel changed NO DP, and DP writes don't drive it. ember cannot switch the exterior light.",
+    "interior_on_off_separate_from_color": "Chromo on/off appears scene/power-tied rather than a clean bool; control color via DP21 and the unit via power."
+  }
+}
