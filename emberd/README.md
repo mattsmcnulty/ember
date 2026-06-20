@@ -11,13 +11,28 @@ temperature, and APNs (the only reliable background path for Live Activities) ca
 reached on the LAN. emberd polls the sauna and pushes updates; it's also the **sole owner**
 of the Tuya connection (the device allows only one local connection at a time).
 
-## Setup (on the Pi)
-1. Copy this `emberd/` folder to the Pi.
-2. `cp options.example.json options.json` and fill in `sauna.devId` / `sauna.localKey`
-   (from the Phase-0 extraction; see repo `tools/phase0/devices.json`). `options.json` is
-   **gitignored** — it holds the localKey.
-3. `docker compose up -d --build`
-4. Test: `curl http://localhost:8765/state`
+## Setup
+
+First, on any machine: copy `emberd/` to the Pi, then `cp options.example.json options.json` and
+fill in `sauna.devId` / `sauna.localKey` (from Phase 0; see repo `tools/phase0/devices.json`).
+`options.json` is **gitignored** — it holds the localKey.
+
+### Option A — native systemd (recommended for the Homebridge Pi)
+The official **Homebridge Raspberry Pi image runs natively (systemd), with no Docker**, so don't
+assume `docker` is present (`which docker` to check). Run emberd as a plain systemd service
+alongside Homebridge — lighter, and co-located for the future Homebridge→HomeKit plugin:
+```
+sudo apt install -y python3-venv     # if needed
+sudo bash deploy/install-native.sh   # creates /opt/emberd venv + enables the emberd.service
+curl http://localhost:8765/state
+```
+Manage it: `systemctl status|restart|stop emberd`, logs via `journalctl -u emberd -f`.
+
+### Option B — Docker (for a stock Pi / the AdGuard box, if you prefer containers)
+```
+docker compose up -d --build
+curl http://localhost:8765/state
+```
 
 > ⚠ **Single connection:** don't run any other local Tuya client against the sauna
 > (HA `tuya-local`, a second script), and keep the OEM Sun Home app closed during local use.
