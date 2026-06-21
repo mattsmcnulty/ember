@@ -49,8 +49,6 @@ targets:
         com.apple.developer.healthkit: true
         com.apple.developer.healthkit.access: []
         aps-environment: development
-        com.apple.security.application-groups:
-          - group.com.mattmcnulty.ember
     dependencies:
       - target: emberWidget
 
@@ -71,8 +69,3 @@ targets:
         CFBundleDisplayName: ember
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
-    entitlements:
-      path: widget.entitlements
-      properties:
-        com.apple.security.application-groups:
-          - group.com.mattmcnulty.ember
