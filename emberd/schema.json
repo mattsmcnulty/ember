@@ -4,12 +4,12 @@
   "unit_default": "F",
   "controls": {
     "power": {
-      "dp": "110", "type": "bool", "writable": true,
-      "note": "Unit power on/off. Interior LED comes on with power. Setting false powers the whole unit down."
+      "dp": "110", "type": "bool_toggle", "writable": true, "status_dp": "20",
+      "note": "MOMENTARY TOGGLE: a write FLIPS power regardless of the value sent (a button press, not a level — in Phase 1 we only ever sent the opposite value so it looked like a level). Drive by desired state: read status from DP20, write only when it must change, else an already-on Start toggles the unit OFF. Interior LED comes on with power."
     },
     "heater": {
-      "dp": "114", "type": "bool", "writable": true,
-      "note": "Heating element on/off — the core control. Confirmed LAN-writable."
+      "dp": "114", "type": "bool_toggle", "writable": true,
+      "note": "MOMENTARY TOGGLE like power: a write flips the heater. Read DP114 for state; write only when it must change. The core heat control."
     },
     "target_temp_f": {
       "dp": "106", "type": "int", "unit": "F", "writable": true,
@@ -20,8 +20,8 @@
       "note": "Session duration. Writing it resets timer_remaining (105)."
     },
     "footwell_light": {
-      "dp": "113", "type": "bool", "writable": true,
-      "note": "Floor/footwell light. Confirmed LAN-writable (toggled off remotely)."
+      "dp": "113", "type": "bool_toggle", "writable": true,
+      "note": "Floor/footwell light. Driven as a toggle (read current, write only when it must change) for safety."
     },
     "chromo_color": {
       "dp": "21", "type": "enum_str", "writable": true,
@@ -30,8 +30,8 @@
       "note": "Interior ceiling LED color. Power-on resets to 'mode'."
     },
     "chromo_cycle": {
-      "dp": "101", "type": "bool", "writable": true,
-      "note": "Rainbow / color-cycle scene. Also brings the footwell light on while active."
+      "dp": "101", "type": "bool_toggle", "writable": true,
+      "note": "Rainbow / color-cycle scene. Driven as a toggle (read current, write only when it must change). Also brings the footwell light on while active."
     }
   },
   "readonly": {
@@ -39,7 +39,7 @@
     "current_temp_c": { "dp": "103", "type": "int", "unit": "C", "note": "°C mirror of current temp" },
     "target_temp_c":  { "dp": "109", "type": "int", "unit": "C", "note": "°C mirror of 106; syncs when powered" },
     "timer_remaining_min": { "dp": "105", "type": "int", "unit": "min", "note": "Live countdown while powered." },
-    "power_status": { "dp": "20", "type": "bool", "note": "Read-only run/status flag; LAN writes ignored and it flickers. Use DP110 to control power." },
+    "power_status": { "dp": "20", "type": "bool", "note": "Canonical power on/off STATUS (read-only) — the real power state. DP110 is only the momentary toggle 'button'; read power from here. Lags a toggle by ~2s before settling." },
     "unit": { "dp": "108", "type": "enum_str", "values": ["f", "c"], "note": "Display unit." }
   },
   "unknown": {
