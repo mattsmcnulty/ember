@@ -189,9 +189,13 @@ class SaunaClient:
             self._handle_error(code, st)
             await self._drop_connection()
             raise RuntimeError(f"device rejected write (Err {code})")
-        # the device often returns a partial status after a write; do a clean refresh
+        # the device's status right after a write is often stale/partial, so trust the
+        # accepted write for the immediate response; the background poll reconciles.
         await asyncio.sleep(0.3)
-        return await self.refresh()
+        await self.refresh()
+        self._raw[str(dp)] = value
+        self._updated = time.time()
+        return self.state()
 
     async def set_power(self, on: bool):
         return await self.set_dp(DP_POWER, bool(on))
