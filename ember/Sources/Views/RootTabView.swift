@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootTabView: View {
     @Environment(SaunaStore.self) private var store
+    @Environment(AppSettings.self) private var settings
     @Environment(\.scenePhase) private var scenePhase
     @State private var showSettings = false
 
@@ -11,7 +12,7 @@ struct RootTabView: View {
             logTab.tabItem { Label("Log", systemImage: "list.bullet.rectangle.portrait") }
         }
         .sheet(isPresented: $showSettings) { SettingsView() }
-        .task { store.startPolling() }
+        .task { SaunaActivityController.shared.configure(settings); store.startPolling() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.startPolling() } else { store.stopPolling() }
         }

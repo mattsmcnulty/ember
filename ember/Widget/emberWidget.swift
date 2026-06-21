@@ -73,33 +73,46 @@ private func preheat(_ s: SaunaActivityAttributes.ContentState) -> Double {
 private struct LockScreen: View {
     let state: SaunaActivityAttributes.ContentState
     var body: some View {
-        HStack(spacing: 16) {
-            ZStack {
-                Circle().stroke(.white.opacity(0.12), lineWidth: 6)
-                Circle().trim(from: 0, to: preheat(state))
-                    .stroke(LinearGradient(colors: [amber, ember], startPoint: .top, endPoint: .bottom),
-                            style: .init(lineWidth: 6, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                Image(systemName: state.heater ? "flame.fill" : "thermometer.medium")
-                    .font(.title3).foregroundStyle(state.heater ? ember : .secondary)
-            }
-            .frame(width: 54, height: 54)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(state.currentTempF)°")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
+        HStack(spacing: 20) {
+            Dial(state: state).frame(width: 104, height: 104)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(state.heater ? "HEATING" : "SAUNA")
+                    .font(.system(size: 11, weight: .bold)).tracking(1.6)
+                    .foregroundStyle(state.heater ? amber : .secondary)
+                Text("Target \(state.targetTempF)°")
+                    .font(.system(.title3, design: .rounded, weight: .semibold))
                     .foregroundStyle(.white)
-                Text(state.heater ? "Heating to \(state.targetTempF)°" : "Target \(state.targetTempF)°")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                if let start = state.sessionStart {
+                    Label {
+                        Text(timerInterval: start...Date.distantFuture, countsDown: false).monospacedDigit()
+                    } icon: { Image(systemName: "timer") }
+                    .font(.system(.subheadline, design: .rounded, weight: .medium))
+                    .foregroundStyle(.secondary)
+                }
             }
             Spacer()
-            if let start = state.sessionStart {
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(timerInterval: start...Date.distantFuture, countsDown: false)
-                        .font(.system(.title2, design: .rounded, weight: .semibold))
-                        .foregroundStyle(.white).monospacedDigit()
-                    Text("in session").font(.caption2).foregroundStyle(.secondary)
-                }
+        }
+    }
+}
+
+private struct Dial: View {
+    let state: SaunaActivityAttributes.ContentState
+    private let sweep = 0.75   // 270°
+    var body: some View {
+        ZStack {
+            Circle().trim(from: 0, to: sweep)
+                .stroke(.white.opacity(0.12), style: .init(lineWidth: 10, lineCap: .round))
+                .rotationEffect(.degrees(135))
+            Circle().trim(from: 0, to: sweep * preheat(state))
+                .stroke(LinearGradient(colors: [amber, ember], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        style: .init(lineWidth: 10, lineCap: .round))
+                .rotationEffect(.degrees(135))
+            VStack(spacing: -1) {
+                Image(systemName: state.heater ? "flame.fill" : "thermometer.medium")
+                    .font(.caption).foregroundStyle(state.heater ? ember : .secondary)
+                Text("\(state.currentTempF)°")
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
             }
         }
     }

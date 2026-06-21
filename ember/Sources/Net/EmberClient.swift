@@ -51,6 +51,11 @@ struct EmberClient: Sendable {
         let _: EmptyResponse = try await send("/activity/token", method: "POST", body: Body(pushToken: token))
     }
 
+    func registerPushToStartToken(_ token: String) async throws {
+        struct Body: Encodable { let pushToken: String }
+        let _: EmptyResponse = try await send("/activity/start-token", method: "POST", body: Body(pushToken: token))
+    }
+
     // MARK: core
 
     private func send<T: Decodable>(_ path: String, method: String,
