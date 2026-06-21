@@ -21,7 +21,7 @@ struct RootTabView: View {
         NavigationStack {
             ControlView()
                 .background(Theme.background)
-                .navigationTitle("ember")
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar { settingsButton }
                 .toolbarBackground(.hidden, for: .navigationBar)
         }

@@ -188,7 +188,7 @@ private struct TargetCard: View {
 private struct TimerCard: View {
     @Environment(SaunaStore.self) private var store
     let state: SaunaState
-    private let presets = [15, 30, 45, 60]
+    private let presets = [60, 75, 90]
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -279,12 +279,12 @@ private struct SonosCard: View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Sauna Speaker", systemImage: "hifispeaker.fill").foregroundStyle(Theme.textSecondary)
                 .font(.system(.subheadline, design: .rounded, weight: .semibold))
-            HStack(spacing: 22) {
+            HStack(spacing: 40) {
                 ctl("backward.fill") { Task { await store.audio("prev") } }
                 ctl("playpause.fill") { Task { await store.audio("play") } }
                 ctl("forward.fill") { Task { await store.audio("next") } }
-                Spacer()
             }
+            .frame(maxWidth: .infinity)
             HStack {
                 Image(systemName: "speaker.fill").foregroundStyle(Theme.textTertiary)
                 Slider(value: $volume, in: 0...100, step: 1) { editing in
