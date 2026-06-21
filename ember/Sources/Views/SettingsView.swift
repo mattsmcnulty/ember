@@ -39,7 +39,7 @@ struct SettingsView: View {
                     LabeledContent("Heater", value: store.state.heater ? "On" : "Off")
                 }
 
-                Section { LabeledContent("ember", value: "1.0") }
+                Section { LabeledContent("Ember", value: "1.0") }
             }
             .navigationTitle("Settings")
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
