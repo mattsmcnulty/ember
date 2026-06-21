@@ -148,7 +148,11 @@ async def control(body: ControlBody):
     except Exception:
         log.exception("control failed")
         raise HTTPException(502, "sauna control failed")
-    return st
+    # reflect commanded toggles so the response isn't transiently stale from a lagging
+    # status DP (e.g. power's DP20); the poll reconciles real device state.
+    sauna.overlay_bools(power=body.power, heater=body.heater,
+                        footwell=body.footwell, chromo_cycle=body.chromoCycle)
+    return sauna.state()
 
 
 @app.post("/audio", dependencies=[Depends(require_auth)])

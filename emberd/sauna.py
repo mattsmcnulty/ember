@@ -18,7 +18,11 @@ import tinytuya
 
 log = logging.getLogger("emberd.sauna")
 
-# Writable controls (DP numbers from schema.json)
+# Writable controls (DP numbers from schema.json).
+# NB: power (110), heater (114), footwell (113) and chromo-cycle (101) are *momentary
+# toggles* — a write flips the current state regardless of the value sent — so they go
+# through _set_bool (read current, write only when it must change). Power's real on/off
+# status is DP_POWER_STATUS (20); DP_POWER (110) is just the toggle "button".
 DP_POWER = "110"
 DP_HEATER = "114"
 DP_TARGET_F = "106"
@@ -27,6 +31,7 @@ DP_FOOTWELL = "113"
 DP_CHROMO = "21"
 DP_CHROMO_CYCLE = "101"
 # Read-only
+DP_POWER_STATUS = "20"
 DP_CURRENT_F = "104"
 DP_CURRENT_C = "103"
 DP_TARGET_C = "109"
@@ -160,7 +165,7 @@ class SaunaClient:
     def state(self) -> dict:
         r = self._raw
         return {
-            "power": bool(r.get(DP_POWER, False)),
+            "power": bool(r.get(DP_POWER_STATUS, False)),
             "heater": bool(r.get(DP_HEATER, False)),
             "currentTempF": r.get(DP_CURRENT_F),
             "currentTempC": r.get(DP_CURRENT_C),
@@ -175,6 +180,18 @@ class SaunaClient:
             "online": self._online,
             "updatedAt": self._updated,
         }
+
+    def overlay_bools(self, *, power=None, heater=None, footwell=None, chromo_cycle=None) -> None:
+        """Reflect just-commanded toggle states onto the cache so the immediate /control
+        response isn't stale: a status DP can trail its toggle by a beat (power's DP20
+        lags ~2s, and a later write's refresh can re-read it pre-settle). The background
+        poll reconciles if a write didn't actually take. Booleans only — no clamping risk
+        (target/timer keep the device's actual, possibly clamped, value)."""
+        for dp, v in ((DP_POWER_STATUS, power), (DP_HEATER, heater),
+                      (DP_FOOTWELL, footwell), (DP_CHROMO_CYCLE, chromo_cycle)):
+            if v is not None:
+                self._raw[dp] = v
+        self._updated = time.time()
 
     def peak_since(self, ts: float) -> Optional[int]:
         hist = list(self._temp_history)  # snapshot — poll loop may append concurrently
@@ -197,11 +214,25 @@ class SaunaClient:
         self._updated = time.time()
         return self.state()
 
+    async def _set_bool(self, write_dp: str, status_dp: str, desired: bool) -> dict:
+        """Toggle-style controls: a write flips the current state regardless of the value
+        sent. Read the current state and only write when it must change — which is also
+        correct if the DP turns out to be a plain level. Avoids e.g. Start toggling an
+        already-on sauna back off."""
+        await self.refresh()
+        if bool(self._raw.get(status_dp, False)) == desired:
+            return self.state()
+        await self.set_dp(write_dp, desired)  # flips it to `desired`
+        if status_dp != write_dp:
+            self._raw[status_dp] = desired
+            self._updated = time.time()
+        return self.state()
+
     async def set_power(self, on: bool):
-        return await self.set_dp(DP_POWER, bool(on))
+        return await self._set_bool(DP_POWER, DP_POWER_STATUS, bool(on))
 
     async def set_heater(self, on: bool):
-        return await self.set_dp(DP_HEATER, bool(on))
+        return await self._set_bool(DP_HEATER, DP_HEATER, bool(on))
 
     async def set_target_temp(self, temp_f: int):
         return await self.set_dp(DP_TARGET_F, int(temp_f))
@@ -215,7 +246,7 @@ class SaunaClient:
         return await self.set_dp(DP_CHROMO, value)
 
     async def set_chromo_cycle(self, on: bool):
-        return await self.set_dp(DP_CHROMO_CYCLE, bool(on))
+        return await self._set_bool(DP_CHROMO_CYCLE, DP_CHROMO_CYCLE, bool(on))
 
     async def set_footwell(self, on: bool):
-        return await self.set_dp(DP_FOOTWELL, bool(on))
+        return await self._set_bool(DP_FOOTWELL, DP_FOOTWELL, bool(on))
