@@ -54,8 +54,7 @@ struct SaunaState: Codable, Equatable, Sendable {
             }
             return .heating
         }
-        guard power else { return .off }
-        return currentWarm ? .idleWarm : .off
+        return power ? .idleWarm : .off   // powered but not heating = "On" (idle)
     }
     private var currentWarm: Bool { (currentTempF ?? 0) > 90 }
 

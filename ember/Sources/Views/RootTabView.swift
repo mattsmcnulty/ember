@@ -24,7 +24,7 @@ struct RootTabView: View {
             ControlView()
                 .background(Theme.background)
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar { settingsButton }
+                .toolbar { settingsButton; powerButton }
                 .toolbarBackground(.hidden, for: .navigationBar)
         }
     }
@@ -46,6 +46,15 @@ struct RootTabView: View {
         ToolbarItem(placement: .topBarTrailing) {
             Button { showSettings = true } label: { Image(systemName: "gearshape") }
                 .tint(Theme.textSecondary)
+        }
+    }
+
+    @ToolbarContentBuilder private var powerButton: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button { Task { await store.setPower(!store.state.power) } } label: {
+                Image(systemName: "power")
+            }
+            .tint(store.state.power ? Theme.ember : Theme.textSecondary)
         }
     }
 }

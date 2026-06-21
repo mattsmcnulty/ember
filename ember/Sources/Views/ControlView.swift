@@ -48,7 +48,7 @@ private struct ConnectionBar: View {
             case .preheating: return ("Preheating", Theme.amber)
             case .ready: return ("Ready", Theme.ember)
             case .heating: return ("Heating", Theme.ember)
-            case .idleWarm: return ("Warm", Theme.amber)
+            case .idleWarm: return ("On", Theme.amber)
             }
         }()
         return Pill(text: text, color: color, filled: store.state.status == .ready)
@@ -226,15 +226,15 @@ private struct LightsCard: View {
         VStack(alignment: .leading, spacing: 14) {
             Label("Lighting", systemImage: "lightbulb.led").foregroundStyle(Theme.textSecondary)
                 .font(.system(.subheadline, design: .rounded, weight: .semibold))
-            HStack(spacing: 10) {
+            HStack(spacing: 7) {
                 ForEach(ChromaPalette.solids, id: \.value) { c in
                     let on = state.chromoColor == c.value && !state.chromoCycle
                     Button { Task { await store.setChromo(c.value) } } label: {
-                        Circle().fill(c.color)
-                            .frame(width: 30, height: 30)
-                            .overlay(Circle().strokeBorder(.white.opacity(on ? 0.9 : 0.12), lineWidth: on ? 2.5 : 1))
-                            .scaleEffect(on ? 1.12 : 1)
-                            .emberGlow(c.color, radius: 8, active: on)
+                        Capsule().fill(c.color)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 32)
+                            .overlay(Capsule().strokeBorder(.white.opacity(on ? 0.95 : 0.12), lineWidth: on ? 3 : 1))
+                            .emberGlow(c.color, radius: 10, active: on)
                     }.buttonStyle(.plain)
                 }
             }

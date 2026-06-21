@@ -79,10 +79,15 @@ final class SaunaStore {
     }
     func stop() async {
         Haptics.toggle()
-        await control(.init(power: false, heater: false)) { $0.power = false; $0.heater = false }
+        await control(.init(heater: false)) { $0.heater = false }  // heat off; leave power (Power toggle fully shuts down)
         await SaunaActivityController.shared.updateHeater(state.heater, state: state)  // ends unless mid-session
     }
-    func setPower(_ on: Bool) async { Haptics.toggle(); await control(.init(power: on)) { $0.power = on } }
+    func setPower(_ on: Bool) async {
+        Haptics.toggle()
+        if on { await control(.init(power: true)) { $0.power = true } }
+        else { await control(.init(power: false, heater: false)) { $0.power = false; $0.heater = false } }  // power off also stops heat
+        await SaunaActivityController.shared.updateHeater(state.heater, state: state)
+    }
     func setHeater(_ on: Bool) async { Haptics.toggle(); await control(.init(heater: on)) { $0.heater = on } }
     func setTarget(_ f: Int) async { await control(.init(targetTempF: f)) { $0.targetTempF = f } }
     func setTimer(_ m: Int) async { Haptics.tap(); await control(.init(timerMin: m)) { $0.timerSetMin = m } }
