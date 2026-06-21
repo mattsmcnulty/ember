@@ -13,6 +13,7 @@ final class SaunaStore {
     var busy = false
 
     private var pollTask: Task<Void, Never>?
+    private var controlEpoch = 0   // bumped by every control; a poll started before a control is discarded
 
     init(settings: AppSettings) { self.settings = settings }
 
@@ -37,12 +38,16 @@ final class SaunaStore {
 
     func refresh() async {
         guard let client else { reachable = false; lastError = "Set the emberd address in Settings"; return }
+        let epoch = controlEpoch
         do {
-            state = try await client.state()
+            let s = try await client.state()
+            guard epoch == controlEpoch else { return }   // a control superseded this fetch — drop it
+            state = s
             reachable = true
             lastError = nil
-            await SaunaActivityController.shared.updateHeater(state.heater, state: state)
+            await SaunaActivityController.shared.updateHeater(s.heater, state: s)
         } catch {
+            guard epoch == controlEpoch else { return }
             reachable = false
             lastError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
         }
@@ -51,12 +56,16 @@ final class SaunaStore {
     // MARK: control
     private func control(_ req: ControlRequest, _ optimistic: (inout SaunaState) -> Void) async {
         guard let client else { return }
+        controlEpoch += 1                         // invalidate any poll already in flight
         var s = state; optimistic(&s); state = s
         busy = true; defer { busy = false }
         do {
-            state = try await client.control(req)
+            let result = try await client.control(req)
+            controlEpoch += 1                      // and any poll that raced during the call
+            state = result
             lastError = nil
         } catch {
+            controlEpoch += 1
             lastError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
             await refresh()
         }
