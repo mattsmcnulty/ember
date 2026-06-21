@@ -46,12 +46,16 @@ struct SaunaState: Codable, Equatable, Sendable {
     /// Coarse status for the header.
     enum Status { case off, preheating, ready, heating, idleWarm }
     var status: Status {
-        guard power else { return .off }
-        guard heater else { return currentWarm ? .idleWarm : .off }
-        if let cur = currentTempF, let tgt = targetTempF {
-            return cur >= tgt - 2 ? .ready : .preheating
+        // Heater is the authoritative "on" signal — the power *status* DP (20) lags the
+        // toggle by a beat, so keying off it would briefly flash "Off" mid-start.
+        if heater {
+            if let cur = currentTempF, let tgt = targetTempF {
+                return cur >= tgt - 2 ? .ready : .preheating
+            }
+            return .heating
         }
-        return .heating
+        guard power else { return .off }
+        return currentWarm ? .idleWarm : .off
     }
     private var currentWarm: Bool { (currentTempF ?? 0) > 90 }
 
