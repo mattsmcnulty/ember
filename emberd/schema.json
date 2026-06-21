@@ -19,19 +19,18 @@
       "dp": "116", "type": "int", "unit": "min", "writable": true,
       "note": "Session duration. Writing it resets timer_remaining (105)."
     },
-    "footwell_light": {
-      "dp": "113", "type": "bool_toggle", "writable": true,
-      "note": "Floor/footwell light. Driven as a toggle (read current, write only when it must change) for safety."
+    "interior_lights": {
+      "dp": "113", "type": "bool", "writable": true,
+      "note": "Interior-lights master OVER LAN (2026-06-21): a network write to DP113 toggles ALL interior lights (ceiling chroma + footwell) together. The panel's dedicated footwell button also flips DP113 but only affects the footwell (hardware), so there is NO footwell-only control via the API. Chroma color (DP21) only renders while this is on. App exposes it as the 'Interior' toggle (state field still named 'footwell' internally — rename pending)."
     },
     "chromo_color": {
       "dp": "21", "type": "enum_str", "writable": true,
-      "values": ["mode", "mode1", "mode2", "mode3", "mode4", "mode5", "mode6", "mode7", "mode8"],
-      "colors_approx": "white + yellow/red/purple/blue/light-blue/green (exact value->color order TBD — verbal cycle was approximate; earlier single test gave mode3=red)",
-      "note": "Interior ceiling LED color. Power-on resets to 'mode'."
+      "solids": {"mode": "white", "mode2": "yellow", "mode3": "red", "mode4": "pink", "mode5": "blue", "mode6": "teal", "mode7": "green"},
+      "note": "Interior ceiling LED color, mapped 2026-06-21 via the in-app debug screen. ONLY the 7 values above are solid colors; mode1 is a no-op and mode8/mode9 read back as white. The panel's color-button cycle order is NOT the same as the DP value order (that mismatch caused earlier confusion). Color only renders while interior lights (DP113) are on; the slow rainbow is DP101."
     },
     "chromo_cycle": {
-      "dp": "101", "type": "bool_toggle", "writable": true,
-      "note": "Rainbow / color-cycle scene. Driven as a toggle (read current, write only when it must change). Also brings the footwell light on while active."
+      "dp": "101", "type": "bool", "writable": true,
+      "note": "Slow morphing rainbow on the ceiling LED (mapped 2026-06-21). true=on; turning it off resets the LED to white (mode). Distinct from the panel's abrupt color-cycle scene, which maps to no DP we use (ignored as useless)."
     }
   },
   "readonly": {
@@ -42,8 +41,8 @@
     "power_status": { "dp": "20", "type": "bool", "note": "Canonical power on/off STATUS (read-only) — the real power state. DP110 is only the momentary toggle 'button'; read power from here. Lags a toggle by ~2s before settling." },
     "unit": { "dp": "108", "type": "enum_str", "values": ["f", "c"], "note": "Display unit." }
   },
-  "unknown": {
-    "111": { "type": "int", "value_seen": 30, "note": "Purpose unknown — never changed during mapping. Possibly a config/limit." }
+  "vestigial": {
+    "111": { "type": "int", "value_seen": 30, "note": "Bluetooth audio volume (default 30). Vestigial — the cabin BT speaker is unused (audio is via the Sonos Amp), so writes have no audible effect. Ignore." }
   },
   "not_controllable": {
     "exterior_light": "Panel-only — toggling it at the panel changed NO DP, and DP writes don't drive it. ember cannot switch the exterior light.",

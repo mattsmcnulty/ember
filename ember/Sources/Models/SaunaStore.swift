@@ -97,8 +97,8 @@ final class SaunaStore {
 
     /// The "Get In" scene: footwell light off, chromotherapy red, 25-minute timer.
     func getInScene() async {
-        await control(.init(timerMin: 25, chromoColor: "mode2", footwell: false)) {
-            $0.timerSetMin = 25; $0.chromoColor = "mode2"; $0.footwell = false
+        await control(.init(timerMin: 25, chromoColor: "mode3", footwell: true)) {
+            $0.timerSetMin = 25; $0.chromoColor = "mode3"; $0.footwell = true
         }
     }
 

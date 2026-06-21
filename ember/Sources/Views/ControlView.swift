@@ -222,24 +222,19 @@ private struct TimerCard: View {
 private struct LightsCard: View {
     @Environment(SaunaStore.self) private var store
     let state: SaunaState
-    private let colors: [(String, Color)] = [
-        ("mode", .white), ("mode1", Color(hex: 0xFFD23E)), ("mode2", Color(hex: 0xFF4D4D)),
-        ("mode3", Color(hex: 0xB061FF)), ("mode4", Color(hex: 0x4D7CFF)), ("mode5", Color(hex: 0x49D6FF)),
-        ("mode6", Color(hex: 0x49E06B)), ("mode7", Color(hex: 0xFF8A3D)), ("mode8", Color(hex: 0xFF5FA2)),
-    ]
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Label("Lighting", systemImage: "lightbulb.led").foregroundStyle(Theme.textSecondary)
                 .font(.system(.subheadline, design: .rounded, weight: .semibold))
             HStack(spacing: 10) {
-                ForEach(colors, id: \.0) { value, color in
-                    let on = state.chromoColor == value && !state.chromoCycle
-                    Button { Task { await store.setChromo(value) } } label: {
-                        Circle().fill(color)
+                ForEach(ChromaPalette.solids, id: \.value) { c in
+                    let on = state.chromoColor == c.value && !state.chromoCycle
+                    Button { Task { await store.setChromo(c.value) } } label: {
+                        Circle().fill(c.color)
                             .frame(width: 30, height: 30)
                             .overlay(Circle().strokeBorder(.white.opacity(on ? 0.9 : 0.12), lineWidth: on ? 2.5 : 1))
                             .scaleEffect(on ? 1.12 : 1)
-                            .emberGlow(color, radius: 8, active: on)
+                            .emberGlow(c.color, radius: 8, active: on)
                     }.buttonStyle(.plain)
                 }
             }
@@ -249,7 +244,7 @@ private struct LightsCard: View {
                 }
                 .toggleStyle(PillToggle())
                 Toggle(isOn: Binding(get: { state.footwell }, set: { v in Task { await store.setFootwell(v) } })) {
-                    Label("Footwell", systemImage: "light.min")
+                    Label("Interior", systemImage: "lightbulb.fill")
                 }
                 .toggleStyle(PillToggle())
             }
