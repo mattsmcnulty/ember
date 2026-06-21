@@ -138,6 +138,14 @@ class SaunaClient:
             except Exception as e:
                 self._online = False
                 log.warning("poll error: %s", e)
+            finally:
+                # This device's long-lived persistent socket drifts: it keeps handing back a
+                # stale/partial frame (temperature updates but power/heater freeze at an old
+                # value), so the cache silently diverges from reality. Drop the socket each
+                # cycle — the next status() reconnects and gets a clean, complete read. We
+                # never hold more than one connection, so the single-owner rule still holds.
+                with contextlib.suppress(Exception):
+                    await self._drop_connection()
             await asyncio.sleep(self.poll_interval)
 
     # ---- state ----
