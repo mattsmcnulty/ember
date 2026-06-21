@@ -1,0 +1,88 @@
+import Foundation
+import Observation
+
+/// Owns live sauna state: polls emberd, exposes control actions with optimistic
+/// updates that reconcile against the server response.
+@MainActor
+@Observable
+final class SaunaStore {
+    private let settings: AppSettings
+    var state = SaunaState()
+    var reachable = false
+    var lastError: String?
+    var busy = false
+
+    private var pollTask: Task<Void, Never>?
+
+    init(settings: AppSettings) { self.settings = settings }
+
+    private var client: EmberClient? {
+        guard let url = settings.url else { return nil }
+        return EmberClient(base: url, apiKey: settings.apiKey)
+    }
+
+    var stale: Bool { reachable && Date().timeIntervalSince1970 - state.updatedAt > 20 }
+
+    // MARK: polling
+    func startPolling() {
+        pollTask?.cancel()
+        pollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.refresh()
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
+    }
+    func stopPolling() { pollTask?.cancel(); pollTask = nil }
+
+    func refresh() async {
+        guard let client else { reachable = false; lastError = "Set the emberd address in Settings"; return }
+        do {
+            state = try await client.state()
+            reachable = true
+            lastError = nil
+            await SaunaActivityController.shared.sync(state)
+        } catch {
+            reachable = false
+            lastError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+        }
+    }
+
+    // MARK: control
+    private func control(_ req: ControlRequest, _ optimistic: (inout SaunaState) -> Void) async {
+        guard let client else { return }
+        var s = state; optimistic(&s); state = s
+        busy = true; defer { busy = false }
+        do {
+            state = try await client.control(req)
+            lastError = nil
+        } catch {
+            lastError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+            await refresh()
+        }
+    }
+
+    /// "Start" powers on + heats; "Stop" turns the heater off.
+    func start() async { Haptics.success(); await control(.init(power: true, heater: true)) { $0.power = true; $0.heater = true } }
+    func stop() async { Haptics.toggle(); await control(.init(heater: false)) { $0.heater = false } }
+    func setPower(_ on: Bool) async { Haptics.toggle(); await control(.init(power: on)) { $0.power = on } }
+    func setHeater(_ on: Bool) async { Haptics.toggle(); await control(.init(heater: on)) { $0.heater = on } }
+    func setTarget(_ f: Int) async { await control(.init(targetTempF: f)) { $0.targetTempF = f } }
+    func setTimer(_ m: Int) async { Haptics.tap(); await control(.init(timerMin: m)) { $0.timerSetMin = m } }
+    func setChromo(_ v: String) async { Haptics.tap(); await control(.init(chromoColor: v)) { $0.chromoColor = v } }
+    func setChromoCycle(_ on: Bool) async { Haptics.tap(); await control(.init(chromoCycle: on)) { $0.chromoCycle = on } }
+    func setFootwell(_ on: Bool) async { Haptics.toggle(); await control(.init(footwell: on)) { $0.footwell = on } }
+
+    func nudgeTarget(_ delta: Int) async {
+        let v = max(60, min(175, (state.targetTempF ?? 150) + delta))
+        Haptics.tap(); await setTarget(v)
+    }
+
+    // MARK: audio + session
+    func audio(_ action: String, volume: Int? = nil) async {
+        guard let client else { return }
+        Haptics.tap(); try? await client.audio(action: action, volume: volume)
+    }
+    func beginSession() async { try? await client?.sessionStart() }
+    func endSession() async -> SessionResult? { try? await client?.sessionEnd() }
+}

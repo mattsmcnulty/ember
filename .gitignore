@@ -26,6 +26,11 @@ build/
 *.dSYM/
 .build/
 Pods/
+# xcodegen output — regenerate with `xcodegen generate` (source of truth = project.yml)
+*.xcodeproj
+ember/Info-App.plist
+ember/Info-Widget.plist
+ember/*.entitlements
 
 # ── macOS ──
 .DS_Store

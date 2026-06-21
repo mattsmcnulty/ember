@@ -1,0 +1,77 @@
+name: ember
+options:
+  bundleIdPrefix: com.mattmcnulty
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    TARGETED_DEVICE_FAMILY: "1"
+    SWIFT_EMIT_LOC_STRINGS: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+targets:
+  ember:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+      - Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mattmcnulty.ember
+        PRODUCT_NAME: ember
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: Info-App.plist
+      properties:
+        CFBundleDisplayName: ember
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIUserInterfaceStyle: Dark
+        NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: true
+        NSLocalNetworkUsageDescription: "ember talks to your sauna bridge (emberd) on your local network to read temperature and control the sauna."
+        NSHealthShareUsageDescription: "ember reads heart rate during sauna sessions to enrich your log."
+        NSHealthUpdateUsageDescription: "ember logs each sauna session to Apple Health."
+    entitlements:
+      path: ember.entitlements
+      properties:
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access: []
+        aps-environment: development
+        com.apple.security.application-groups:
+          - group.com.mattmcnulty.ember
+    dependencies:
+      - target: emberWidget
+
+  emberWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Widget
+      - Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mattmcnulty.ember.widget
+        PRODUCT_NAME: emberWidget
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: Info-Widget.plist
+      properties:
+        CFBundleDisplayName: ember
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: widget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.mattmcnulty.ember
