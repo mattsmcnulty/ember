@@ -188,7 +188,7 @@ private struct TargetCard: View {
 private struct TimerCard: View {
     @Environment(SaunaStore.self) private var store
     let state: SaunaState
-    private let presets = [60, 75, 90]
+    private let presets = [25, 60, 75, 90]
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {

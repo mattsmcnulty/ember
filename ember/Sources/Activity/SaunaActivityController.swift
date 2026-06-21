@@ -1,17 +1,20 @@
 import ActivityKit
 import Foundation
 
-/// Manages the sauna Live Activity. Starts on heat-on / Get In, registers its APNs
-/// push tokens with emberd (so emberd pushes temperature even when the app is closed),
-/// updates from foreground polling, and ends on heat-off / Get Out.
+/// Owns the sauna Live Activity lifecycle. The activity is shown whenever the sauna is
+/// heating OR a session is in progress, and removed otherwise — so turning the heater on
+/// (from the app OR the physical panel) shows it, and turning it off removes it. It
+/// registers APNs push tokens with emberd so temperature keeps updating when the app is closed.
 @MainActor
 final class SaunaActivityController {
     static let shared = SaunaActivityController()
     // ActivityKit is thread-safe and access here is main-serialized; opt out of Swift 6
     // region isolation so the Activity handle can cross to update/end.
     nonisolated(unsafe) private var activity: Activity<SaunaActivityAttributes>?
-    private var sessionStart: Date?
     private var settings: AppSettings?
+    private var heaterOn = false
+    private var sessionStart: Date?
+    private var latest = SaunaState()
     private var startObserver: Task<Void, Never>?
     private var tokenObserver: Task<Void, Never>?
 
@@ -40,18 +43,48 @@ final class SaunaActivityController {
               heater: s.heater, power: s.power, sessionStart: sessionStart)
     }
 
-    func start(state: SaunaState, sessionStart: Date?) async {
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        if let sessionStart { self.sessionStart = sessionStart }  // nil = preserve existing
-        let content = ActivityContent(state: makeState(state),
+    // MARK: inputs
+
+    /// Called every poll with the real device state — drives the activity from the actual
+    /// heater state, so panel-initiated on/off is reflected, and refreshes the live temp.
+    func updateHeater(_ on: Bool, state: SaunaState) async {
+        heaterOn = on
+        latest = state
+        await reconcile()
+    }
+
+    func beginSession(_ start: Date, state: SaunaState) async {
+        sessionStart = start
+        latest = state
+        await reconcile()
+    }
+
+    func endSession(state: SaunaState) async {
+        sessionStart = nil
+        latest = state
+        await reconcile()
+    }
+
+    // MARK: lifecycle
+
+    private func reconcile() async {
+        let shouldShow = heaterOn || sessionStart != nil
+        let content = ActivityContent(state: makeState(latest),
                                       staleDate: Date().addingTimeInterval(120))
-        if activity != nil {                  // already running — just update
-            await activity?.update(content)
-            return
+        if shouldShow {
+            if activity == nil {
+                guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+                activity = try? Activity.request(
+                    attributes: SaunaActivityAttributes(), content: content, pushType: .token)
+                observeToken()
+            } else {
+                await activity?.update(content)
+            }
+        } else if activity != nil {
+            tokenObserver?.cancel(); tokenObserver = nil
+            await activity?.end(nil, dismissalPolicy: .immediate)
+            activity = nil
         }
-        activity = try? Activity.request(
-            attributes: SaunaActivityAttributes(), content: content, pushType: .token)
-        observeToken()
     }
 
     private func observeToken() {
@@ -62,25 +95,5 @@ final class SaunaActivityController {
                 try? await self?.client?.registerActivityToken(Self.hex(data))
             }
         }
-    }
-
-    /// Called from polling — updates the live value if an activity is running.
-    func sync(_ state: SaunaState) async {
-        guard activity != nil else { return }
-        await activity?.update(ActivityContent(state: makeState(state),
-                                               staleDate: Date().addingTimeInterval(120)))
-    }
-
-    func end() async {
-        tokenObserver?.cancel(); tokenObserver = nil
-        await activity?.end(nil, dismissalPolicy: .immediate)
-        activity = nil
-        sessionStart = nil
-    }
-
-    /// Stop-heating ends the activity only when no session is in progress (so you can
-    /// stop the heat mid-session and keep the Lock-Screen counter).
-    func endIfNoSession() async {
-        if sessionStart == nil { await end() }
     }
 }

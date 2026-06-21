@@ -28,7 +28,7 @@ final class SaunaStore {
         pollTask?.cancel()
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
-                await self?.refresh()
+                if self?.busy == false { await self?.refresh() }  // don't fight an in-flight control
                 try? await Task.sleep(for: .seconds(2))
             }
         }
@@ -41,7 +41,7 @@ final class SaunaStore {
             state = try await client.state()
             reachable = true
             lastError = nil
-            await SaunaActivityController.shared.sync(state)
+            await SaunaActivityController.shared.updateHeater(state.heater, state: state)
         } catch {
             reachable = false
             lastError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
@@ -66,12 +66,12 @@ final class SaunaStore {
     func start() async {
         Haptics.success()
         await control(.init(power: true, heater: true)) { $0.power = true; $0.heater = true }
-        await SaunaActivityController.shared.start(state: state, sessionStart: nil)  // preheat dial on the Lock Screen
+        await SaunaActivityController.shared.updateHeater(state.heater, state: state)  // preheat dial on the Lock Screen
     }
     func stop() async {
         Haptics.toggle()
-        await control(.init(heater: false)) { $0.heater = false }
-        await SaunaActivityController.shared.endIfNoSession()
+        await control(.init(power: false, heater: false)) { $0.power = false; $0.heater = false }
+        await SaunaActivityController.shared.updateHeater(state.heater, state: state)  // ends unless mid-session
     }
     func setPower(_ on: Bool) async { Haptics.toggle(); await control(.init(power: on)) { $0.power = on } }
     func setHeater(_ on: Bool) async { Haptics.toggle(); await control(.init(heater: on)) { $0.heater = on } }
@@ -84,6 +84,13 @@ final class SaunaStore {
     func nudgeTarget(_ delta: Int) async {
         let v = max(60, min(175, (state.targetTempF ?? 150) + delta))
         Haptics.tap(); await setTarget(v)
+    }
+
+    /// The "Get In" scene: footwell light off, chromotherapy red, 25-minute timer.
+    func getInScene() async {
+        await control(.init(timerMin: 25, chromoColor: "mode2", footwell: false)) {
+            $0.timerSetMin = 25; $0.chromoColor = "mode2"; $0.footwell = false
+        }
     }
 
     // MARK: audio + session

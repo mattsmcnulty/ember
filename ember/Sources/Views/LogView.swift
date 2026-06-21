@@ -74,7 +74,8 @@ struct LogView: View {
         activeStart = Date().timeIntervalSince1970
         Task {
             await store.beginSession()
-            await SaunaActivityController.shared.start(state: store.state, sessionStart: Date(timeIntervalSince1970: activeStart))
+            await store.getInScene()   // footwell off · chroma red · 25-min timer
+            await SaunaActivityController.shared.beginSession(Date(timeIntervalSince1970: activeStart), state: store.state)
         }
     }
 
@@ -91,7 +92,7 @@ struct LogView: View {
             ctx.insert(session)
             try? ctx.save()
             await HealthKitManager.shared.log(start: start, end: end, peakTempF: session.peakTempF)
-            await SaunaActivityController.shared.end()
+            await SaunaActivityController.shared.endSession(state: store.state)
         }
     }
 

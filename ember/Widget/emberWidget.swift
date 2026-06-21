@@ -73,8 +73,8 @@ private func preheat(_ s: SaunaActivityAttributes.ContentState) -> Double {
 private struct LockScreen: View {
     let state: SaunaActivityAttributes.ContentState
     var body: some View {
-        HStack(spacing: 20) {
-            Dial(state: state).frame(width: 104, height: 104)
+        HStack(spacing: 16) {
+            Dial(state: state).frame(width: 72, height: 72)
             VStack(alignment: .leading, spacing: 6) {
                 Text(state.heater ? "HEATING" : "SAUNA")
                     .font(.system(size: 11, weight: .bold)).tracking(1.6)
@@ -92,6 +92,7 @@ private struct LockScreen: View {
             }
             Spacer()
         }
+        .padding(.vertical, 4)
     }
 }
 
@@ -101,17 +102,17 @@ private struct Dial: View {
     var body: some View {
         ZStack {
             Circle().trim(from: 0, to: sweep)
-                .stroke(.white.opacity(0.12), style: .init(lineWidth: 10, lineCap: .round))
+                .stroke(.white.opacity(0.12), style: .init(lineWidth: 7, lineCap: .round))
                 .rotationEffect(.degrees(135))
             Circle().trim(from: 0, to: sweep * preheat(state))
                 .stroke(LinearGradient(colors: [amber, ember], startPoint: .topLeading, endPoint: .bottomTrailing),
-                        style: .init(lineWidth: 10, lineCap: .round))
+                        style: .init(lineWidth: 7, lineCap: .round))
                 .rotationEffect(.degrees(135))
             VStack(spacing: -1) {
                 Image(systemName: state.heater ? "flame.fill" : "thermometer.medium")
-                    .font(.caption).foregroundStyle(state.heater ? ember : .secondary)
+                    .font(.caption2).foregroundStyle(state.heater ? ember : .secondary)
                 Text("\(state.currentTempF)°")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
             }
         }
