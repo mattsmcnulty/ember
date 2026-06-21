@@ -125,6 +125,24 @@ async def get_state():
     return st
 
 
+@app.get("/debug/raw")
+async def debug_raw():
+    r = sauna._raw if sauna else {}
+    items = sorted(r.items(), key=lambda kv: int(kv[0]) if str(kv[0]).isdigit() else 999)
+    return {"raw": {k: str(v) for k, v in items}, "online": sauna._online if sauna else False}
+
+
+@app.post("/debug/set", dependencies=[Depends(require_auth)])
+async def debug_set(body: dict):
+    try:
+        return await sauna.set_dp(str(body["dp"]), body["value"])
+    except KeyError:
+        raise HTTPException(400, "need {dp, value}")
+    except Exception:
+        log.exception("debug_set failed")
+        raise HTTPException(502, "set failed")
+
+
 @app.post("/control", dependencies=[Depends(require_auth)])
 async def control(body: ControlBody):
     st = sauna.state()

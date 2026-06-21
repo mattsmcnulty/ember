@@ -10,6 +10,7 @@ struct RootTabView: View {
         TabView {
             controlTab.tabItem { Label("Control", systemImage: "flame.fill") }
             logTab.tabItem { Label("Log", systemImage: "list.bullet.rectangle.portrait") }
+            debugTab.tabItem { Label("Debug", systemImage: "ladybug.fill") }
         }
         .sheet(isPresented: $showSettings) { SettingsView() }
         .task { SaunaActivityController.shared.configure(settings); store.startPolling() }
@@ -35,6 +36,10 @@ struct RootTabView: View {
                 .navigationTitle("Log")
                 .toolbar { settingsButton }
         }
+    }
+
+    private var debugTab: some View {
+        NavigationStack { DebugView().background(Theme.background) }
     }
 
     @ToolbarContentBuilder private var settingsButton: some ToolbarContent {

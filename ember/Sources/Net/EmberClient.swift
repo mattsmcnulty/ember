@@ -56,6 +56,14 @@ struct EmberClient: Sendable {
         let _: EmptyResponse = try await send("/activity/start-token", method: "POST", body: Body(pushToken: token))
     }
 
+    // MARK: debug
+
+    func debugRaw() async throws -> DebugRaw { try await send("/debug/raw", method: "GET") }
+    func debugSet(dp: String, value: DebugValue) async throws {
+        struct Body: Encodable { let dp: String; let value: DebugValue }
+        let _: EmptyResponse = try await send("/debug/set", method: "POST", body: Body(dp: dp, value: value))
+    }
+
     // MARK: core
 
     private func send<T: Decodable>(_ path: String, method: String,
@@ -87,6 +95,19 @@ struct EmberClient: Sendable {
 
 struct EmptyResponse: Decodable { }
 private struct EmptyBody: Encodable { }
+
+struct DebugRaw: Decodable { let raw: [String: String]; let online: Bool }
+enum DebugValue: Encodable {
+    case bool(Bool), int(Int), str(String)
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .bool(let b): try c.encode(b)
+        case .int(let i): try c.encode(i)
+        case .str(let s): try c.encode(s)
+        }
+    }
+}
 
 /// Erase a heterogeneous Encodable body so `send` can stay generic.
 private struct AnyEncodable: Encodable {
