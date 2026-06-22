@@ -40,7 +40,7 @@ final class SaunaActivityController {
 
     private func makeState(_ s: SaunaState) -> SaunaActivityAttributes.ContentState {
         .init(currentTempF: s.currentTempF ?? 0, targetTempF: s.targetTempF ?? 0,
-              heater: s.heater, power: s.power, sessionStart: sessionStart)
+              heater: s.heater, power: s.power, chromoColor: s.chromoColor, sessionStart: sessionStart)
     }
 
     // MARK: inputs

@@ -8,6 +8,8 @@ struct SaunaActivityAttributes: ActivityAttributes {
         var targetTempF: Int
         var heater: Bool
         var power: Bool
+        /// Current LED color (DP21 value) for the chroma accent; nil = no solid color.
+        var chromoColor: String?
         /// When set, the lock-screen shows a self-updating in-session counter.
         var sessionStart: Date?
     }

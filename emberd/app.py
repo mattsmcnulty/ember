@@ -239,6 +239,7 @@ async def _push_loop():
                 "targetTempF": st.get("targetTempF"),
                 "heater": st.get("heater"),
                 "power": st.get("power"),
+                "chromoColor": st.get("chromoColor"),
                 "timerRemainingMin": st.get("timerRemainingMin"),
                 "online": st.get("online"),
             }

@@ -79,7 +79,7 @@ final class SaunaStore {
     }
     func stop() async {
         Haptics.toggle()
-        await control(.init(heater: false)) { $0.heater = false }  // heat off; leave power (Power toggle fully shuts down)
+        await control(.init(power: false, heater: false)) { $0.power = false; $0.heater = false }  // Stop = full off; Power toggle is the independent override
         await SaunaActivityController.shared.updateHeater(state.heater, state: state)  // ends unless mid-session
     }
     func setPower(_ on: Bool) async {
