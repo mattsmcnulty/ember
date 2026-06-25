@@ -14,6 +14,7 @@ final class SaunaStore {
 
     private var pollTask: Task<Void, Never>?
     private var controlEpoch = 0   // bumped by every control; a poll started before a control is discarded
+    private var targetSendTask: Task<Void, Never>?   // debounces rapid temp-stepper taps into one write
 
     init(settings: AppSettings) { self.settings = settings }
 
@@ -56,16 +57,17 @@ final class SaunaStore {
     // MARK: control
     private func control(_ req: ControlRequest, _ optimistic: (inout SaunaState) -> Void) async {
         guard let client else { return }
-        controlEpoch += 1                         // invalidate any poll already in flight
+        controlEpoch += 1
+        let epoch = controlEpoch                   // this control's generation
         var s = state; optimistic(&s); state = s
         busy = true; defer { busy = false }
         do {
             let result = try await client.control(req)
-            controlEpoch += 1                      // and any poll that raced during the call
+            guard epoch == controlEpoch else { return }   // a newer control/nudge superseded this — don't clobber
             state = result
             lastError = nil
         } catch {
-            controlEpoch += 1
+            guard epoch == controlEpoch else { return }
             lastError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
             await refresh()
         }
@@ -74,7 +76,10 @@ final class SaunaStore {
     /// "Start" powers on + heats; "Stop" turns the heater off.
     func start() async {
         Haptics.success()
-        await control(.init(power: true, heater: true)) { $0.power = true; $0.heater = true }
+        // power on + heat, with white interior during preheat (color applied last so it sticks)
+        await control(.init(power: true, heater: true, chromoColor: "mode", footwell: true)) {
+            $0.power = true; $0.heater = true; $0.chromoColor = "mode"; $0.footwell = true
+        }
         await SaunaActivityController.shared.updateHeater(state.heater, state: state)  // preheat dial on the Lock Screen
     }
     func stop() async {
@@ -95,12 +100,24 @@ final class SaunaStore {
     func setChromoCycle(_ on: Bool) async { Haptics.tap(); await control(.init(chromoCycle: on)) { $0.chromoCycle = on } }
     func setFootwell(_ on: Bool) async { Haptics.toggle(); await control(.init(footwell: on)) { $0.footwell = on } }
 
+    /// Rapid +/- taps update the UI instantly but coalesce into one write, so they don't race
+    /// each other (out-of-order responses used to make the value "not stick").
     func nudgeTarget(_ delta: Int) async {
         let v = max(60, min(175, (state.targetTempF ?? 150) + delta))
-        Haptics.tap(); await setTarget(v)
+        state.targetTempF = v          // optimistic, instant
+        controlEpoch += 1               // invalidate any in-flight poll so it can't clobber this
+        busy = true                     // pause polling while the user keeps adjusting
+        Haptics.tap()
+        targetSendTask?.cancel()
+        targetSendTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(450))
+            guard let self, !Task.isCancelled else { return }
+            await self.setTarget(self.state.targetTempF ?? v)   // single write to emberd
+            self.busy = false
+        }
     }
 
-    /// The "Get In" scene: footwell light off, chromotherapy red, 25-minute timer.
+    /// The "Get In" scene: interior lights on, chromotherapy red (mode3), 25-minute timer.
     func getInScene() async {
         await control(.init(timerMin: 25, chromoColor: "mode3", footwell: true)) {
             $0.timerSetMin = 25; $0.chromoColor = "mode3"; $0.footwell = true

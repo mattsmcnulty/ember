@@ -1,0 +1,10 @@
+// Copy this file to "Local.xcconfig" (gitignored) and fill in your own bridge.
+// These become the app's default emberd address + API key at build time, so a
+// fresh install is already connected. Settings still overrides them and persists.
+//
+// IMPORTANT: xcconfig treats // as the start of a comment, so the // in a URL must
+// be written as /$()/  — $() expands to nothing, which breaks up the //. The line
+// below therefore resolves to http://192.168.1.50:8765
+
+EMBERD_URL = http:/$()/192.168.1.50:8765
+EMBERD_API_KEY = your-emberd-api-key

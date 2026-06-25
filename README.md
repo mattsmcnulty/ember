@@ -198,6 +198,7 @@ account (for on-device runs + APNs). The `.xcodeproj` is generated (gitignored).
 
 ```bash
 cd ember
+cp Local.example.xcconfig Local.xcconfig    # optional: bake your emberd URL + apiKey in as defaults (gitignored)
 export DEVELOPMENT_TEAM=YOURTEAMID          # your Apple Developer Team ID — xcodegen reads it
 xcodegen generate
 # build + install to a connected, Developer-Mode-enabled iPhone (automatic signing):
@@ -209,8 +210,12 @@ xcrun devicectl device install app --device <DEVICE_ID> build/Build/Products/Deb
 **Build it yourself:** set `DEVELOPMENT_TEAM` (above — add it to your shell profile or use direnv
 so you don't repeat it), and change the bundle-id prefix in `project.yml` (`com.mattmcnulty` → your
 own reverse-domain). Then sign into your Apple ID in Xcode, enable **Developer Mode** on the iPhone
-(Settings → Privacy & Security), trust the developer profile, and in the app's **Settings** point it
-at emberd's address + paste the `apiKey`.
+(Settings → Privacy & Security), and trust the developer profile.
+
+Point the app at your bridge **either** by copying `Local.example.xcconfig` → `Local.xcconfig`
+(gitignored) and filling in `EMBERD_URL` + `EMBERD_API_KEY` — baked in as the build-time default —
+**or** in the app's **Settings** at runtime (Settings always overrides and persists in UserDefaults).
+Note xcconfig treats `//` as a comment, so a URL's `//` must be written `http:/$()/host:port`.
 
 > Because this is a **development** build, the iPhone needs **Developer Mode** on to install
 > *and* run it, and the signing profile expires periodically. The planned escape hatch is

@@ -21,6 +21,9 @@ targets:
   ember:
     type: application
     platform: iOS
+    configFiles:
+      Debug: Config.xcconfig
+      Release: Config.xcconfig
     sources:
       - Sources
       - Shared
@@ -45,6 +48,8 @@ targets:
         NSLocalNetworkUsageDescription: "ember talks to your sauna bridge (emberd) on your local network to read temperature and control the sauna."
         NSHealthShareUsageDescription: "ember reads heart rate during sauna sessions to enrich your log."
         NSHealthUpdateUsageDescription: "ember logs each sauna session to Apple Health."
+        EMBERDDefaultURL: "$(EMBERD_URL)"
+        EMBERDDefaultAPIKey: "$(EMBERD_API_KEY)"
     entitlements:
       path: ember.entitlements
       properties:

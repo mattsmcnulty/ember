@@ -31,6 +31,8 @@ Pods/
 ember/Info-App.plist
 ember/Info-Widget.plist
 ember/*.entitlements
+# Personal build defaults (emberd URL + API key) — see Local.example.xcconfig
+ember/Local.xcconfig
 
 # ── macOS ──
 .DS_Store

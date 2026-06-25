@@ -22,12 +22,22 @@ final class SaunaActivityController {
     /// Activity for a preheat even if the app is closed (once emberd's APNs key is set).
     func configure(_ settings: AppSettings) {
         self.settings = settings
+        adoptExistingActivity()
         guard startObserver == nil else { return }
         let updates = Activity<SaunaActivityAttributes>.pushToStartTokenUpdates
         startObserver = Task { [weak self] in
             for await data in updates {
                 try? await self?.client?.registerPushToStartToken(Self.hex(data))
             }
+        }
+    }
+
+    /// On launch, reuse a Live Activity the system still has running instead of starting a
+    /// second one — fixes "sometimes two Live Activities."
+    private func adoptExistingActivity() {
+        if activity == nil, let existing = Activity<SaunaActivityAttributes>.activities.first {
+            activity = existing
+            observeToken()
         }
     }
 
@@ -72,14 +82,16 @@ final class SaunaActivityController {
         let content = ActivityContent(state: makeState(latest),
                                       staleDate: Date().addingTimeInterval(120))
         if shouldShow {
+            if activity == nil, let existing = Activity<SaunaActivityAttributes>.activities.first {
+                activity = existing; observeToken()   // reuse (relaunch / push-to-start) instead of duplicating
+            }
             if activity == nil {
                 guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
                 activity = try? Activity.request(
                     attributes: SaunaActivityAttributes(), content: content, pushType: .token)
                 observeToken()
-            } else {
-                await activity?.update(content)
             }
+            await activity?.update(content)
         } else if activity != nil {
             tokenObserver?.cancel(); tokenObserver = nil
             await activity?.end(nil, dismissalPolicy: .immediate)

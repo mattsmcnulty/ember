@@ -1,0 +1,12 @@
+// ember build configuration (committed — no secrets here).
+//
+// Your personal connection defaults (emberd bridge URL + API key) are NOT
+// committed. Copy Local.example.xcconfig -> Local.xcconfig (gitignored) and fill
+// it in; the optional include below pulls it in when present. Without it the app
+// ships with no baked-in address and you set it once in Settings (which persists
+// in UserDefaults either way).
+
+EMBERD_URL =
+EMBERD_API_KEY =
+
+#include? "Local.xcconfig"

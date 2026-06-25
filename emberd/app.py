@@ -155,12 +155,13 @@ async def control(body: ControlBody):
             st = await sauna.set_timer(body.timerMin)
         if body.heater is not None:
             st = await sauna.set_heater(body.heater)
-        if body.chromoColor is not None:
-            st = await sauna.set_chromo_color(body.chromoColor)
-        if body.chromoCycle is not None:
-            st = await sauna.set_chromo_cycle(body.chromoCycle)
         if body.footwell is not None:
             st = await sauna.set_footwell(body.footwell)
+        if body.chromoCycle is not None:
+            st = await sauna.set_chromo_cycle(body.chromoCycle)
+        if body.chromoColor is not None:
+            # color LAST: interior lights (DP113) must be on first, else turning them on resets to white
+            st = await sauna.set_chromo_color(body.chromoColor)
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception:
@@ -208,6 +209,16 @@ async def session_end():
 @app.post("/activity/token", dependencies=[Depends(require_auth)])
 async def register_activity_token(body: TokenBody):
     _activity_tokens.add(body.pushToken)
+    # push current state to the new activity immediately so it starts updating right away,
+    # instead of waiting for the next temp change / keepalive (fixes the slow-to-start lag).
+    if apns and sauna:
+        st = sauna.state()
+        if st.get("currentTempF") is not None:
+            try:
+                await apns.update_activity(body.pushToken, _activity_content(st),
+                                           priority=10, stale_after_sec=STALE_AFTER_SEC)
+            except Exception as e:
+                log.warning("immediate activity push failed: %s", e)
     return {"registered": len(_activity_tokens)}
 
 
@@ -219,6 +230,19 @@ async def register_push_to_start(body: TokenBody):
 
 
 # ---------- background tasks ----------
+def _activity_content(st: dict) -> dict:
+    """Live Activity ContentState payload (mirrors the iOS ContentState keys)."""
+    return {
+        "currentTempF": st.get("currentTempF"),
+        "targetTempF": st.get("targetTempF"),
+        "heater": st.get("heater"),
+        "power": st.get("power"),
+        "chromoColor": st.get("chromoColor"),
+        "timerRemainingMin": st.get("timerRemainingMin"),
+        "online": st.get("online"),
+    }
+
+
 async def _push_loop():
     """Push temperature to Live Activities on change, plus a keep-alive before stale."""
     global _last_pushed_temp, _last_push_at
@@ -234,15 +258,7 @@ async def _push_loop():
             now = time.time()
             if temp == _last_pushed_temp and (now - _last_push_at) < KEEPALIVE_SEC:
                 continue
-            content = {
-                "currentTempF": temp,
-                "targetTempF": st.get("targetTempF"),
-                "heater": st.get("heater"),
-                "power": st.get("power"),
-                "chromoColor": st.get("chromoColor"),
-                "timerRemainingMin": st.get("timerRemainingMin"),
-                "online": st.get("online"),
-            }
+            content = _activity_content(st)
             sent_ok = False
             dead: set[str] = set()
             for tok in list(_activity_tokens):
