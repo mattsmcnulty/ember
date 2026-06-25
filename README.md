@@ -198,6 +198,7 @@ account (for on-device runs + APNs). The `.xcodeproj` is generated (gitignored).
 
 ```bash
 cd ember
+export DEVELOPMENT_TEAM=YOURTEAMID          # your Apple Developer Team ID — xcodegen reads it
 xcodegen generate
 # build + install to a connected, Developer-Mode-enabled iPhone (automatic signing):
 xcodebuild -project ember.xcodeproj -scheme ember \
@@ -205,10 +206,11 @@ xcodebuild -project ember.xcodeproj -scheme ember \
 xcrun devicectl device install app --device <DEVICE_ID> build/Build/Products/Debug-iphoneos/ember.app
 ```
 
-First-time device setup: sign into your Apple ID in Xcode, set the **Team** in `project.yml`
-(`DEVELOPMENT_TEAM`), enable **Developer Mode** on the iPhone (Settings → Privacy & Security),
-and trust the developer profile. Then in the app's **Settings**, point it at emberd's address
-and paste the `apiKey`.
+**Build it yourself:** set `DEVELOPMENT_TEAM` (above — add it to your shell profile or use direnv
+so you don't repeat it), and change the bundle-id prefix in `project.yml` (`com.mattmcnulty` → your
+own reverse-domain). Then sign into your Apple ID in Xcode, enable **Developer Mode** on the iPhone
+(Settings → Privacy & Security), trust the developer profile, and in the app's **Settings** point it
+at emberd's address + paste the `apiKey`.
 
 > Because this is a **development** build, the iPhone needs **Developer Mode** on to install
 > *and* run it, and the signing profile expires periodically. The planned escape hatch is
@@ -236,6 +238,11 @@ your *own* device), never bundled. It is **not** an App Store product — that w
 official Tuya/Sun Home integration path, since OEM-locked devices can't be linked to a
 third-party Tuya cloud project. Don't use Sun Home / Tuya / Eclipse names or logos in any
 distributed build.
+
+**⚠️ Safety & no warranty.** ember controls a **heating appliance**. It's provided as-is under the
+MIT license with **no warranty** — use at your own risk, and never rely on it as a safety cutoff
+(the sauna's own timer and thermostat remain the primary controls). Not affiliated with, endorsed
+by, or connected to Sun Home Saunas, Edge Theory Labs, or Tuya.
 
 ---
 

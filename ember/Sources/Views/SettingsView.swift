@@ -13,7 +13,7 @@ struct SettingsView: View {
             Form {
                 Section {
                     LabeledContent("Address") {
-                        TextField("http://192.168.1.50:8765", text: $settings.baseURL)
+                        TextField("http://your-pi-ip:8765", text: $settings.baseURL)
                             .multilineTextAlignment(.trailing).textInputAutocapitalization(.never)
                             .autocorrectionDisabled().keyboardType(.URL)
                     }
