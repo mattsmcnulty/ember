@@ -35,7 +35,7 @@ ember/*.entitlements
 ember/Local.xcconfig
 
 # ── Local tooling / machine-specific (never commit) ──
-# Claude Code local settings/plans/memory — may hold machine-specific paths or creds.
+# Local agent/editor settings — may hold machine-specific paths or secrets.
 .claude/
 
 # ── Design source (large editable binaries; the exported PNGs are tracked, these are not) ──

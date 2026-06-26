@@ -33,11 +33,7 @@ heat / light / timer / audio control, get-in/get-out session logging, and Apple 
 | Local control (power, heater, target, timer, chromotherapy, interior lights, Sonos) | ✅ working on device (iPhone 16 Pro Max, iOS 26) |
 | Live Activity (Lock Screen + Dynamic Island) — live temp via APNs, heat dial, status, chroma accent, session counter | ✅ |
 | Session logging + Apple Health (`HKWorkout`) | ✅ |
-| Remote access away from home | 🔜 next: outbound **MQTT relay** (no VPN, no open ports) |
-| Illustrated sauna hero art · HealthKit→WHOOP single-source · TestFlight distribution | ⏸ deferred |
-
-The full phased plan lives in `/.claude/plans/` (or ask). The reverse-engineering scratch
-(`tools/phase0/`) is gitignored and kept only as a re-extraction safety net.
+| Live temperature anywhere (APNs push, nothing exposed) | ✅ |
 
 ---
 
@@ -56,7 +52,7 @@ background temperature push rides the internet (via Apple's APNs).
 Three components. The iOS app **never speaks Tuya** — it only talks to `emberd` over HTTP.
 
 ```
-┌────────────┐   HTTP/JSON (LAN; MQTT relay later)   ┌─────────────────────┐  Tuya LAN v3.5   ┌──────────┐
+┌────────────┐   HTTP/JSON over the LAN              ┌─────────────────────┐  Tuya LAN v3.5   ┌──────────┐
 │  ember     │  GET /state   POST /control           │  emberd             │  TCP 6668        │  Sauna   │
 │  iOS app   │ ───────────────────────────────────▶  │  Python on the      │  (single conn,   │  Tuya    │
 │ (SwiftUI)  │ ◀───────────────────────────────────  │  Homebridge Pi      │  reconnect/poll) │  ESP32   │
@@ -140,8 +136,8 @@ button: Start auto-powers on, Stop fully powers off, and Power is the independen
 ### 9. We mapped it all hands-on with an in-app Debug tab
 Once it was clear the device's behavior was subtle, we shipped a temporary **Debug DP tab**
 (every raw DP live + a generic "set DP N = value" pad) so the human at the sauna could poke and
-annotate directly. That's how the palette, DP113, and the toggle behavior were nailed down. It
-stays in the app until everything's confirmed, then gets removed.
+annotate directly. That's how the palette, DP113, and the toggle behavior were nailed down. It's now behind
+`#if DEBUG`, so release builds don't ship it.
 
 Also handled along the way: APNs token-auth Live Activities (`.p8` / ES256 JWT, per-activity +
 push-to-start tokens), Swift 6 strict-concurrency around ActivityKit, and a heater "deadman"
@@ -252,18 +248,16 @@ Point the app at your bridge **either** by copying `Local.example.xcconfig` → 
 Note xcconfig treats `//` as a comment, so a URL's `//` must be written `http:/$()/host:port`.
 
 > Because this is a **development** build, the iPhone needs **Developer Mode** on to install
-> *and* run it, and the signing profile expires periodically. The planned escape hatch is
-> **TestFlight** (runs without Developer Mode; 90-day build refresh).
+> *and* run it, and the signing profile expires periodically. **TestFlight** is the way around
+> that — it runs without Developer Mode (90-day build refresh).
 
 ---
 
-## Remote access (planned)
+## Remote access
 
-Live temperature (the Live Activity) **already works anywhere** — APNs delivers it over the
-internet with nothing exposed. Interactive *control* away from home is the next phase: an
-**outbound MQTT relay** (emberd dials out to a free TLS broker; the app talks to the broker;
-nothing inbound is opened, no VPN, no domain), with the app preferring the snappy LAN path when
-home and falling back to the relay when away. Design is in the plan file.
+Live temperature (the Live Activity) **works anywhere** — APNs delivers it over the internet with
+nothing exposed. Interactive *control* runs over the LAN; to reach it away from home, put emberd
+behind Tailscale (no inbound ports, no public exposure).
 
 ---
 
@@ -310,15 +304,3 @@ ember stands on a lot of other people's work:
 - **[XcodeGen](https://github.com/yonaskolb/XcodeGen)** — generates the Xcode project from `project.yml`.
 
 Dependency licenses are listed in [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md).
-
----
-
-## Roadmap
-
-1. **Phase 2 — MQTT relay** for secure remote control (next).
-2. **Phase 3** — illustrated sauna hero on the Control tab (needs art).
-3. **Phase 4** — HealthKit single-source so WHOOP imports sessions cleanly (one `HKWorkout`,
-   no Mindful Minutes, with a Settings toggle).
-4. **Wrap-up** — TestFlight distribution (so Developer Mode can be turned back off); remove the
-   Debug tab; optional Homebridge plugin to expose the sauna to Apple Home + Siri.
-```
