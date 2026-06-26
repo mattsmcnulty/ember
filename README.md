@@ -1,6 +1,4 @@
-<p align="center"><img src="docs/media/icon.png" width="104" alt="Ember app icon"></p>
-
-# ember 🔥
+<p align="center"><img src="docs/media/icon.png" width="104" alt="Ember app icon"><br/><b>Ember</b></p>
 
 **Local-first iOS control for an infrared sauna — live Lock-Screen temperature, one-screen
 heat / light / timer / audio, session logging, and Apple Health.**
