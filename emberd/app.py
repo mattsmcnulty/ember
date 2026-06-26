@@ -27,6 +27,7 @@ apns = None
 _api_key: Optional[str] = None
 _heater_max_on_sec: Optional[int] = None
 _poll_interval = 5.0
+_debug_enabled = False
 
 # In-memory state
 _activity_tokens: set[str] = set()
@@ -69,14 +70,25 @@ async def require_auth(authorization: Optional[str] = Header(None)):
         raise HTTPException(401, "unauthorized")
 
 
+async def require_debug():
+    """Hide the /debug/* routes unless server.debugEndpoints is true (default off)."""
+    if not _debug_enabled:
+        raise HTTPException(404, "not found")
+
+
 # ---------- lifespan ----------
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
-    global sauna, sonos, apns, _api_key, _heater_max_on_sec, _poll_interval
+    global sauna, sonos, apns, _api_key, _heater_max_on_sec, _poll_interval, _debug_enabled
     opts = config.load()
     s = opts["sauna"]
     srv = opts.get("server", {})
     _api_key = srv.get("apiKey") or None
+    if _api_key and _api_key.startswith("CHANGE-ME"):
+        raise RuntimeError(
+            "server.apiKey is still the example placeholder. Set a real random key "
+            "(python3 -c 'import secrets; print(secrets.token_urlsafe(32))'), or null to disable auth.")
+    _debug_enabled = bool(srv.get("debugEndpoints", False))
     _poll_interval = float(srv.get("pollIntervalSec", 5))
     mins = srv.get("heaterMaxOnMinutes")
     _heater_max_on_sec = int(mins) * 60 if mins else None
@@ -95,6 +107,9 @@ async def lifespan(app: FastAPI):
     log.info("emberd started (sauna %s, APNs %s, auth %s, deadman %s)",
              s["ip"], "on" if apns else "off", "on" if _api_key else "OFF",
              f"{_heater_max_on_sec // 60}min" if _heater_max_on_sec else "off")
+    if not _api_key:
+        log.warning("AUTH OFF: /control and other mutating routes are open to anyone who can "
+                    "reach this port — including powering on the heater. Set server.apiKey.")
     try:
         yield
     finally:
@@ -125,14 +140,14 @@ async def get_state():
     return st
 
 
-@app.get("/debug/raw")
+@app.get("/debug/raw", dependencies=[Depends(require_debug), Depends(require_auth)])
 async def debug_raw():
     r = sauna._raw if sauna else {}
     items = sorted(r.items(), key=lambda kv: int(kv[0]) if str(kv[0]).isdigit() else 999)
     return {"raw": {k: str(v) for k, v in items}, "online": sauna._online if sauna else False}
 
 
-@app.post("/debug/set", dependencies=[Depends(require_auth)])
+@app.post("/debug/set", dependencies=[Depends(require_debug), Depends(require_auth)])
 async def debug_set(body: dict):
     try:
         return await sauna.set_dp(str(body["dp"]), body["value"])

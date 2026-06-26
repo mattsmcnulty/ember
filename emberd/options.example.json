@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy to options.json and fill in. options.json is gitignored (holds the localKey).",
+  "_comment": "Copy to options.json and fill in. options.json is gitignored (it holds the localKey + apiKey). Only the 'sauna' block plus a server.apiKey are needed for basic local control; 'sonos' and 'apns' are optional.",
   "sauna": {
     "ip": "192.168.1.50",
     "devId": "YOUR_DEVICE_ID",
@@ -7,9 +7,11 @@
     "version": 3.5
   },
   "sonos": {
+    "_comment": "Optional — controls a Sonos by name; delete this block if you have no Sonos.",
     "name": "Sauna"
   },
   "apns": {
+    "_comment": "Optional — Live Activity push. Leave enabled=false to skip. sandbox=true for dev/Xcode builds, false only for TestFlight/App Store. p8Path /data/... is the Docker mount; for a native install use an absolute path like /opt/emberd/AuthKey.p8.",
     "enabled": false,
     "keyId": "YOUR_APNS_KEY_ID",
     "teamId": "YOUR_APPLE_TEAM_ID",
@@ -18,10 +20,10 @@
     "sandbox": true
   },
   "server": {
-    "host": "0.0.0.0",
-    "port": 8765,
+    "_comment": "apiKey: a long random string, then required as 'Authorization: Bearer <key>' on mutating routes. null = auth OFF (dev only — anyone on the network can power the heater). The bind host/port are set in deploy/emberd.service + Dockerfile, not here. debugEndpoints exposes /debug/* (raw DP dump + arbitrary DP write) — keep false in production.",
     "pollIntervalSec": 5,
-    "apiKey": "CHANGE-ME-long-random-string (required Authorization: Bearer on /control etc; null disables auth)",
-    "heaterMaxOnMinutes": null
+    "apiKey": null,
+    "heaterMaxOnMinutes": 120,
+    "debugEndpoints": false
   }
 }

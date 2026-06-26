@@ -74,7 +74,7 @@ struct LogView: View {
         activeStart = Date().timeIntervalSince1970
         Task {
             await store.beginSession()
-            await store.getInScene()   // footwell off · chroma red · 25-min timer
+            await store.getInScene()   // interior lights on · chroma red · 25-min timer
             await SaunaActivityController.shared.beginSession(Date(timeIntervalSince1970: activeStart), state: store.state)
         }
     }

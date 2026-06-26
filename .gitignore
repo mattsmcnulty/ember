@@ -34,5 +34,13 @@ ember/*.entitlements
 # Personal build defaults (emberd URL + API key) — see Local.example.xcconfig
 ember/Local.xcconfig
 
+# ── Local tooling / machine-specific (never commit) ──
+# Claude Code local settings/plans/memory — may hold machine-specific paths or creds.
+.claude/
+
+# ── Design source (large editable binaries; the exported PNGs are tracked, these are not) ──
+*.psd
+*.ai
+
 # ── macOS ──
 .DS_Store

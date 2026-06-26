@@ -1,13 +1,25 @@
 # ember 🔥
 
+**Local-first iOS control for an infrared sauna — live Lock-Screen temperature, one-screen
+heat / light / timer / audio, session logging, and Apple Health.**
+
 A bespoke, native **iOS app + local bridge** that fully controls a **Sun Home Eclipse 2**
 infrared sauna — replacing the cloud-only OEM "Sun Home" app with a polished, private,
 **local-first** experience: live Lock-Screen temperature (Live Activity), one-screen
 heat / light / timer / audio control, get-in/get-out session logging, and Apple Health.
 
+<!-- Capture a Live Activity GIF + Control-screen shot into docs/media/ (see docs/media/README.md), then uncomment:
+<p align="center">
+  <img src="docs/media/live-activity.gif" width="260" alt="Live Activity — Lock-Screen temperature">
+  &nbsp;
+  <img src="docs/media/control.png" width="260" alt="Control screen">
+</p>
+-->
+
 > Personal project. ember controls **one specific sauna on its owner's own network**.
-> Nothing reverse-engineered ships in the app; the device key is per-user config kept out
-> of git. See [Legal & scope](#legal--scope).
+> Nothing reverse-engineered ships in the app; the device key is per-user config kept out of
+> git. **Controls a heating appliance — no warranty, use at your own risk. Not affiliated with
+> Sun Home Saunas, Edge Theory Labs, or Tuya.** See [Legal & scope](#legal--scope).
 
 ---
 
@@ -187,6 +199,24 @@ files (`emberd/options.json`, `tools/phase0/devices.json`, `*.p8`). Never commit
 
 ## Build & run
 
+### Getting your `localKey`
+
+LAN control needs your device's 16-byte `localKey` — and you need **your own** device's
+(`devId` + `localKey` + its LAN IP), not the author's:
+
+- **First try — the tinytuya wizard.** `pip install tinytuya && python -m tinytuya wizard` pulls
+  your devices' keys through a free Tuya IoT cloud project. Works whenever the device can be
+  linked to a Smart Life / Tuya account. See
+  [tinytuya setup](https://github.com/jasonacox/tinytuya#setup-wizard).
+- **If the device never appears in Smart Life** (OEM-locked, as Sun Home's are), read the key
+  from the OEM app at runtime instead: an Android emulator running the OEM APK with
+  [Frida](https://frida.re) hooking the Tuya SDK's device bean — **no re-pair**, so your account
+  and pairing stay intact. This is how ember's key was obtained (see *The hard parts #1*).
+
+The `localKey` **rotates** on re-pair (and sometimes after firmware updates) — if local control
+suddenly breaks, re-extract it. The reverse-engineering scratch (`tools/phase0/`) is gitignored
+and ships with nothing; the steps above don't depend on it.
+
 ### emberd (the bridge)
 See [`emberd/README.md`](emberd/README.md). Short version: copy `emberd/` to the Pi, fill in
 `options.json` (`sauna.devId` / `sauna.localKey`, a long random `server.apiKey`, and optionally
@@ -202,6 +232,7 @@ cp Local.example.xcconfig Local.xcconfig    # optional: bake your emberd URL + a
 export DEVELOPMENT_TEAM=YOURTEAMID          # your Apple Developer Team ID — xcodegen reads it
 xcodegen generate
 # build + install to a connected, Developer-Mode-enabled iPhone (automatic signing):
+# (find your device id with:  xcrun devicectl list devices)
 xcodebuild -project ember.xcodeproj -scheme ember \
   -destination 'platform=iOS,id=<DEVICE_UDID>' -allowProvisioningUpdates -derivedDataPath build build
 xcrun devicectl device install app --device <DEVICE_ID> build/Build/Products/Debug-iphoneos/ember.app
@@ -248,6 +279,34 @@ distributed build.
 MIT license with **no warranty** — use at your own risk, and never rely on it as a safety cutoff
 (the sauna's own timer and thermostat remain the primary controls). Not affiliated with, endorsed
 by, or connected to Sun Home Saunas, Edge Theory Labs, or Tuya.
+
+This MIT license covers ember's **own** source; bundled dependencies keep their own licenses
+([`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md)). **Sun Home, Eclipse, Edge Theory Labs,
+Tuya, Sonos, Apple, HealthKit, and WHOOP** are trademarks of their respective owners, used here
+nominally to describe interoperability — no affiliation or endorsement is implied.
+
+---
+
+## Acknowledgements
+
+ember stands on a lot of other people's work:
+
+- **[tinytuya](https://github.com/jasonacox/tinytuya)** (Jason Cox) — the Tuya LAN v3.5 client
+  (AES-GCM session-key handshake) at the heart of emberd. Without it the local control doesn't exist.
+- **Prior art — DP maps:** [make-all/tuya-local](https://github.com/make-all/tuya-local) and
+  [bitswype/finnleo_ha](https://github.com/bitswype/finnleo_ha) — sibling Tuya sauna/heater maps
+  that gave the starting hypotheses I then verified hands-on for the Eclipse 2.
+- **[Frida](https://frida.re)** — dynamic instrumentation used to read the device `localKey` out
+  of the OEM app's memory (the gate the whole project hinged on).
+- **[SoCo](https://github.com/SoCo/SoCo)** — local Sonos control, no cloud account.
+- **[FastAPI](https://fastapi.tiangolo.com)** + **[Uvicorn](https://www.uvicorn.org)**,
+  **[httpx](https://www.python-httpx.org)**, **[PyJWT](https://github.com/jpadilla/pyjwt)** — the
+  emberd HTTP API, ASGI server, HTTP/2 APNs client, and ES256 token signing.
+- Apple's **ActivityKit** (Live Activities / Dynamic Island) and **HealthKit** (`HKWorkout`), plus
+  **APNs** for the background temperature push.
+- **[XcodeGen](https://github.com/yonaskolb/XcodeGen)** — generates the Xcode project from `project.yml`.
+
+Dependency licenses are listed in [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md).
 
 ---
 

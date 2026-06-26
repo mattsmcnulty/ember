@@ -17,7 +17,20 @@ if [ -f "$HERE/options.json" ]; then
   cp "$HERE/options.json" "$DEST"/
 else
   cp "$HERE/options.example.json" "$DEST/options.json"
+  # generate a unique random apiKey so auth is ON by default (never ship the example placeholder)
+  KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+  python3 - "$DEST/options.json" "$KEY" <<'PY'
+import json, sys
+path, key = sys.argv[1], sys.argv[2]
+o = json.load(open(path))
+o.setdefault("server", {})["apiKey"] = key
+json.dump(o, open(path, "w"), indent=2)
+PY
   echo "!! Edit $DEST/options.json and fill in sauna.devId / sauna.localKey before starting."
+  echo "!! A random server.apiKey was generated — put this SAME key in the iOS app (Settings or Local.xcconfig):"
+  echo "     $KEY"
+  echo "!! For Live Activities (APNs) on this native install, copy your AuthKey.p8 into $DEST and set"
+  echo "   apns.p8Path to $DEST/AuthKey.p8 (the /data/... default is Docker-only)."
 fi
 
 # python venv + deps (apt: python3-venv must be present; on Raspberry Pi OS: sudo apt install -y python3-venv)
