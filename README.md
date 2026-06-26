@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/media/icon.png" width="104" alt="Ember app icon"></p>
+
 # ember 🔥
 
 **Local-first iOS control for an infrared sauna — live Lock-Screen temperature, one-screen
@@ -8,13 +10,14 @@ infrared sauna — replacing the cloud-only OEM "Sun Home" app with a polished, 
 **local-first** experience: live Lock-Screen temperature (Live Activity), one-screen
 heat / light / timer / audio control, get-in/get-out session logging, and Apple Health.
 
-<!-- Capture a Live Activity GIF + Control-screen shot into docs/media/ (see docs/media/README.md), then uncomment:
 <p align="center">
-  <img src="docs/media/live-activity.gif" width="260" alt="Live Activity — Lock-Screen temperature">
-  &nbsp;
-  <img src="docs/media/control.png" width="260" alt="Control screen">
+  <img src="docs/media/control-off.png" width="248" alt="Control screen — idle, Start Heating">
+  &nbsp;&nbsp;
+  <img src="docs/media/control-preheating.png" width="248" alt="Control screen — preheating with live temperature">
 </p>
--->
+
+<!-- A Live Activity / Dynamic Island GIF is the single highest-signal addition — drop one into
+     docs/media/ (see docs/media/README.md) and add it above. -->
 
 > Personal project. ember controls **one specific sauna on its owner's own network**.
 > Nothing reverse-engineered ships in the app; the device key is per-user config kept out of
