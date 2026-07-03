@@ -20,7 +20,21 @@ struct ControlView: View {
             .padding(.bottom, 36)
         }
         .scrollIndicators(.hidden)
-        .animation(.snappy(duration: 0.35), value: s)
+        .animation(.snappy(duration: 0.35), value: VisualKey(s))
+    }
+}
+
+/// The fields whose *changes* should animate. Deliberately excludes `updatedAt`
+/// (bumped by every poll — animating on the whole state re-ran a 0.35s transaction
+/// across the screen every 2s) and `timerRemainingMin` (the countdown self-ticks).
+private struct VisualKey: Equatable {
+    let power: Bool, heater: Bool, chromoCycle: Bool, footwell: Bool
+    let currentTempF: Int?, targetTempF: Int?, timerSetMin: Int?
+    let chromoColor: String?
+    init(_ s: SaunaState) {
+        power = s.power; heater = s.heater; chromoCycle = s.chromoCycle; footwell = s.footwell
+        currentTempF = s.currentTempF; targetTempF = s.targetTempF
+        timerSetMin = s.timerSetMin; chromoColor = s.chromoColor
     }
 }
 
@@ -195,9 +209,15 @@ private struct TimerCard: View {
                 Label("Timer", systemImage: "timer").foregroundStyle(Theme.textSecondary)
                     .font(.system(.subheadline, design: .rounded, weight: .semibold))
                 Spacer()
-                if let rem = state.timerRemainingMin, state.heater {
-                    Text("\(rem) min left").font(.system(.subheadline, design: .rounded))
-                        .foregroundStyle(Theme.amber)
+                if let deadline = store.timerDeadline, deadline > .now {
+                    // self-ticking countdown — no dependence on the 2s poll
+                    HStack(spacing: 4) {
+                        Text(timerInterval: Date.now...deadline, countsDown: true)
+                            .monospacedDigit()
+                        Text("left")
+                    }
+                    .font(.system(.subheadline, design: .rounded))
+                    .foregroundStyle(Theme.amber)
                 }
             }
             HStack(spacing: 8) {
@@ -289,6 +309,9 @@ private struct SonosCard: View {
             }
         }
         .glassCard()
+        .task {  // seed the slider from the speaker's actual volume
+            if let v = await store.audioVolume() { volume = Double(v) }
+        }
     }
     private func ctl(_ icon: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
