@@ -41,6 +41,7 @@ DP_UNIT = "108"
 CHROMO_VALUES = ["mode", "mode1", "mode2", "mode3", "mode4", "mode5", "mode6", "mode7", "mode8"]
 
 POLL_CEILING_SEC = 25.0          # keep well under the Tuya idle-drop (~30s); poll = keepalive
+STICKY_TTL_SEC = 8.0             # hold a commanded DP over lagging polls (DP20 trails ~2s)
 FATAL_ERR = "914"                # ERR_KEY_OR_VER — wrong localKey/protocol version
 
 
@@ -65,6 +66,7 @@ class SaunaClient:
         self._dev: Optional[tinytuya.Device] = None
         self._lock: Optional[asyncio.Lock] = None  # created in start() under the running loop
         self._raw: dict[str, Any] = {}
+        self._pending: dict[str, tuple[Any, float]] = {}  # dp -> (commanded value, expires_at)
         self._online = False
         self._updated = 0.0
         self._temp_history: list[tuple[float, int]] = []  # (ts, currentTempF)
@@ -162,6 +164,7 @@ class SaunaClient:
             log.debug("status returned no dps: %s", st)
             return self.state()
         self._raw.update(dps)
+        self._apply_pending(dps)
         self._online = True
         self._updated = time.time()
         cf = self._raw.get(DP_CURRENT_F)
@@ -189,17 +192,35 @@ class SaunaClient:
             "updatedAt": self._updated,
         }
 
+    def _stick(self, dp: str, value: Any, ttl: float = STICKY_TTL_SEC) -> None:
+        """Reflect a just-commanded DP onto the cache and hold it over lagging polls.
+        A status DP can trail its toggle by a beat (power's DP20 lags ~2s), so a poll
+        landing in that window would revert the value and flicker every client. The
+        pending entry is dropped as soon as the device confirms it — or after the TTL,
+        so a write that didn't actually take still reconciles to reality."""
+        self._raw[str(dp)] = value
+        self._pending[str(dp)] = (value, time.time() + ttl)
+        self._updated = time.time()
+
+    def _apply_pending(self, polled: dict) -> None:
+        """After a poll merges device DPs: re-assert commanded values the device hasn't
+        caught up to yet; forget ones it confirmed or that expired (device wins)."""
+        now = time.time()
+        for dp, (val, exp) in list(self._pending.items()):
+            if (dp in polled and polled[dp] == val) or now >= exp:
+                del self._pending[dp]
+            else:
+                self._raw[dp] = val
+
     def overlay_bools(self, *, power=None, heater=None, footwell=None, chromo_cycle=None) -> None:
-        """Reflect just-commanded toggle states onto the cache so the immediate /control
-        response isn't stale: a status DP can trail its toggle by a beat (power's DP20
-        lags ~2s, and a later write's refresh can re-read it pre-settle). The background
-        poll reconciles if a write didn't actually take. Booleans only — no clamping risk
-        (target/timer keep the device's actual, possibly clamped, value)."""
+        """Stick just-commanded toggle states onto the cache so neither the immediate
+        /control response nor the next few polls are transiently stale (see _stick).
+        Booleans only — no clamping risk (target/timer keep the device's actual,
+        possibly clamped, value)."""
         for dp, v in ((DP_POWER_STATUS, power), (DP_HEATER, heater),
                       (DP_FOOTWELL, footwell), (DP_CHROMO_CYCLE, chromo_cycle)):
             if v is not None:
-                self._raw[dp] = v
-        self._updated = time.time()
+                self._stick(dp, v)
 
     def peak_since(self, ts: float) -> Optional[int]:
         hist = list(self._temp_history)  # snapshot — poll loop may append concurrently
@@ -218,8 +239,7 @@ class SaunaClient:
         # accepted write for the immediate response; the background poll reconciles.
         await asyncio.sleep(0.3)
         await self.refresh()
-        self._raw[str(dp)] = value
-        self._updated = time.time()
+        self._stick(dp, value)
         return self.state()
 
     async def _set_bool(self, write_dp: str, status_dp: str, desired: bool) -> dict:
@@ -232,8 +252,7 @@ class SaunaClient:
             return self.state()
         await self.set_dp(write_dp, desired)  # flips it to `desired`
         if status_dp != write_dp:
-            self._raw[status_dp] = desired
-            self._updated = time.time()
+            self._stick(status_dp, desired)
         return self.state()
 
     async def set_power(self, on: bool):
@@ -246,7 +265,12 @@ class SaunaClient:
         return await self.set_dp(DP_TARGET_F, int(temp_f))
 
     async def set_timer(self, minutes: int):
-        return await self.set_dp(DP_TIMER_SET, int(minutes))
+        st = await self.set_dp(DP_TIMER_SET, int(minutes))
+        if minutes > 0:
+            # remaining (DP105) trails a timer set by a poll; reflect it immediately
+            self._stick(DP_TIMER_REMAINING, int(minutes))
+            st = self.state()
+        return st
 
     async def set_chromo_color(self, value: str):
         if value not in CHROMO_VALUES:

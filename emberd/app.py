@@ -33,7 +33,7 @@ _debug_enabled = False
 _activity_tokens: set[str] = set()
 _push_to_start_token: Optional[str] = None
 _session: Optional[dict] = None
-_last_pushed_temp: Optional[int] = None
+_last_pushed_content: Optional[dict] = None
 _last_push_at = 0.0
 _heater_on_since: Optional[float] = None
 
@@ -200,24 +200,35 @@ async def audio(body: AudioBody):
         raise HTTPException(502, "sonos control failed")
 
 
+@app.get("/audio/state")
+async def audio_state():
+    """Read-only Sonos snapshot (volume, transport, track) — open like /state."""
+    try:
+        return await sonos.now_playing()
+    except Exception:
+        raise HTTPException(502, "sonos unavailable")
+
+
 @app.post("/session/start", dependencies=[Depends(require_auth)])
 async def session_start():
-    global _session
+    global _session, _last_pushed_content
     if _session:  # idempotent — don't clobber an active session's accounting
         return {"active": True, "startedAt": _session["start"], "alreadyActive": True}
     _session = {"start": time.time()}
+    _last_pushed_content = None  # bust the push dedupe so the Lock-Screen counter appears next tick
     return {"active": True, "startedAt": _session["start"]}
 
 
 @app.post("/session/end", dependencies=[Depends(require_auth)])
 async def session_end():
-    global _session
+    global _session, _last_pushed_content
     if not _session:
         raise HTTPException(400, "no active session")
     start = _session["start"]
     end = time.time()
     peak = sauna.peak_since(start)
     _session = None
+    _last_pushed_content = None  # bust the push dedupe so the counter clears next tick
     return {"startedAt": start, "endedAt": end, "durationSec": int(end - start), "peakTempF": peak}
 
 
@@ -246,34 +257,40 @@ async def register_push_to_start(body: TokenBody):
 
 # ---------- background tasks ----------
 def _activity_content(st: dict) -> dict:
-    """Live Activity ContentState payload (mirrors the iOS ContentState keys)."""
+    """Live Activity ContentState payload — must decode against the iOS ContentState.
+
+    Every key mirrors a stored ContentState property; extra keys are ignored by Codable
+    but a null in a non-optional field makes the WHOLE push silently undecodable, so the
+    ints/bools are coerced. sessionStartEpoch is plain Unix epoch seconds — never send a
+    raw Date: ActivityKit decodes push content-state with a default JSONDecoder
+    (reference-date seconds, not epoch), which is a silent off-by-31-years trap.
+    """
     return {
-        "currentTempF": st.get("currentTempF"),
-        "targetTempF": st.get("targetTempF"),
-        "heater": st.get("heater"),
-        "power": st.get("power"),
+        "currentTempF": int(st.get("currentTempF") or 0),
+        "targetTempF": int(st.get("targetTempF") or 0),
+        "heater": bool(st.get("heater")),
+        "power": bool(st.get("power")),
         "chromoColor": st.get("chromoColor"),
-        "timerRemainingMin": st.get("timerRemainingMin"),
-        "online": st.get("online"),
+        "sessionStartEpoch": _session["start"] if _session else None,
     }
 
 
 async def _push_loop():
-    """Push temperature to Live Activities on change, plus a keep-alive before stale."""
-    global _last_pushed_temp, _last_push_at
+    """Push state to Live Activities whenever anything they render changes,
+    plus a keep-alive before stale."""
+    global _last_pushed_content, _last_push_at
     while True:
         try:
             await asyncio.sleep(_poll_interval)
             if not apns or not _activity_tokens:
                 continue
             st = sauna.state()
-            temp = st.get("currentTempF")
-            if temp is None:
+            if st.get("currentTempF") is None:
                 continue
             now = time.time()
-            if temp == _last_pushed_temp and (now - _last_push_at) < KEEPALIVE_SEC:
-                continue
             content = _activity_content(st)
+            if content == _last_pushed_content and (now - _last_push_at) < KEEPALIVE_SEC:
+                continue
             sent_ok = False
             dead: set[str] = set()
             for tok in list(_activity_tokens):
@@ -288,7 +305,7 @@ async def _push_loop():
                     log.warning("APNs send failed for %s…: %s", tok[:8], e)
             _activity_tokens.difference_update(dead)
             if sent_ok:  # only advance dedupe after a successful round
-                _last_pushed_temp = temp
+                _last_pushed_content = content
                 _last_push_at = now
         except asyncio.CancelledError:
             raise
