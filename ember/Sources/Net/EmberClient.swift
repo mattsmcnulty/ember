@@ -38,6 +38,8 @@ struct EmberClient: Sendable {
         let _: EmptyResponse = try await send("/audio", method: "POST", body: Body(action: action, volume: volume))
     }
 
+    func audioState() async throws -> AudioState { try await send("/audio/state", method: "GET") }
+
     func sessionStart() async throws {
         let _: EmptyResponse = try await send("/session/start", method: "POST", body: EmptyBody())
     }
@@ -95,6 +97,8 @@ struct EmberClient: Sendable {
 
 struct EmptyResponse: Decodable { }
 private struct EmptyBody: Encodable { }
+
+struct AudioState: Decodable { let volume: Int? }
 
 struct DebugRaw: Decodable { let raw: [String: String]; let online: Bool }
 enum DebugValue: Encodable {
