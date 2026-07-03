@@ -7,8 +7,9 @@
     "version": 3.5
   },
   "sonos": {
-    "_comment": "Optional — controls a Sonos by name; delete this block if you have no Sonos.",
-    "name": "Sauna"
+    "_comment": "Optional — controls a Sonos by name; delete this block if you have no Sonos. Set ip to skip multicast discovery (more reliable — give the speaker a DHCP reservation).",
+    "name": "Sauna",
+    "ip": null
   },
   "apns": {
     "_comment": "Optional — Live Activity push. Leave enabled=false to skip. sandbox=true for dev/Xcode builds, false only for TestFlight/App Store. p8Path /data/... is the Docker mount; for a native install use an absolute path like /opt/emberd/AuthKey.p8.",

@@ -95,7 +95,8 @@ async def lifespan(app: FastAPI):
 
     sauna = SaunaClient(ip=s["ip"], dev_id=s["devId"], local_key=s["localKey"],
                         version=float(s.get("version", 3.5)), poll_interval=_poll_interval)
-    sonos = SonosController(opts.get("sonos", {}).get("name", "Sauna"))
+    scfg = opts.get("sonos", {})
+    sonos = SonosController(scfg.get("name", "Sauna"), ip=scfg.get("ip"))
     acfg = opts.get("apns", {})
     if acfg.get("enabled"):
         from apns import APNsClient

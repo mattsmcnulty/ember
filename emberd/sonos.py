@@ -16,20 +16,34 @@ except Exception:  # soco optional at import time
 
 
 class SonosController:
-    def __init__(self, name: str = "Sauna"):
+    def __init__(self, name: str = "Sauna", ip: Optional[str] = None):
         self.name = name
+        self.ip = ip  # static IP skips multicast discovery (unreliable across some networks)
         self._device = None
 
     async def _io(self, fn):
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, fn)
+        try:
+            return await loop.run_in_executor(None, fn)
+        except Exception:
+            self._device = None  # cached speaker may be stale (moved IP / power-cycled)
+            raise
 
     def _resolve(self):
         if soco is None:
             raise RuntimeError("soco not installed")
         if self._device is not None:
             return self._device
-        dev = soco.discovery.by_name(self.name)
+        dev = None
+        if self.ip:
+            try:
+                cand = soco.SoCo(self.ip)
+                cand.get_current_transport_info()  # cheap liveness probe
+                dev = cand
+            except Exception:
+                log.warning("Sonos at configured ip %s unreachable; falling back to discovery", self.ip)
+        if dev is None:
+            dev = soco.discovery.by_name(self.name)
         if dev is None:
             # fall back to scanning all zones
             for z in (soco.discover() or []):
