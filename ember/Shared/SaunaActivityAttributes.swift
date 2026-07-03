@@ -11,7 +11,12 @@ struct SaunaActivityAttributes: ActivityAttributes {
         /// Current LED color (DP21 value) for the chroma accent; nil = no solid color.
         var chromoColor: String?
         /// When set, the lock-screen shows a self-updating in-session counter.
-        var sessionStart: Date?
+        /// Unix epoch seconds, not a Date: ActivityKit decodes APNs content-state with a
+        /// default JSONDecoder (reference-date seconds), so a raw Date from the server
+        /// would silently decode 31 years off. A plain epoch Double is the same on both
+        /// sides and greppable in emberd's payload.
+        var sessionStartEpoch: Double?
+        var sessionStart: Date? { sessionStartEpoch.map(Date.init(timeIntervalSince1970:)) }
     }
 
     var label: String = "Sauna"
