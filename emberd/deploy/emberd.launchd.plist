@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- emberd LaunchDaemon template — installed by deploy/install-macos.sh, which
+     substitutes __USER__. KeepAlive+RunAtLoad ≈ systemd Restart=always. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.emberd</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/emberd/.venv/bin/uvicorn</string>
+        <string>app:app</string>
+        <string>--host</string>
+        <string>0.0.0.0</string>
+        <string>--port</string>
+        <string>8765</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/opt/emberd</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>EMBERD_OPTIONS</key>
+        <string>/opt/emberd/options.json</string>
+    </dict>
+    <key>UserName</key>
+    <string>__USER__</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+    <key>StandardOutPath</key>
+    <string>/opt/emberd/emberd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/opt/emberd/emberd.log</string>
+</dict>
+</plist>

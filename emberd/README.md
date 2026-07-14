@@ -13,8 +13,9 @@ of the Tuya connection (the device allows only one local connection at a time).
 
 ## Setup
 
-First, on any machine: copy `emberd/` to the Pi, then `cp options.example.json options.json` and
-fill in `sauna.devId` / `sauna.localKey` / `sauna.ip`. Don't have your device's key yet? See
+First, on any machine: copy `emberd/` to your always-on box (Raspberry Pi, Mac mini, …), then
+`cp options.example.json options.json` and fill in `sauna.devId` / `sauna.localKey` / `sauna.ip`.
+Don't have your device's key yet? See
 [**Getting your `localKey`**](../README.md#getting-your-localkey) in the root README.
 `options.json` is **gitignored** — it holds the localKey + apiKey.
 
@@ -36,7 +37,21 @@ docker compose up -d --build
 curl http://localhost:8765/state
 ```
 Requires a **Linux** host: the container uses host networking for Tuya/Sonos multicast, which
-Docker Desktop on macOS doesn't support — on a Mac, use the native uvicorn dev run below instead.
+Docker Desktop on macOS doesn't support — on a Mac, use Option C instead.
+
+### Option C — macOS LaunchDaemon (an always-on Mac mini works great)
+Runs at boot with no login, auto-restarts (`KeepAlive`), logs to `/opt/emberd/emberd.log`:
+```
+sudo bash deploy/install-macos.sh    # /opt/emberd venv + /Library/LaunchDaemons/com.emberd.plist
+curl http://localhost:8765/state
+```
+Manage it: `launchctl print system/com.emberd` (status), `sudo launchctl kickstart -k
+system/com.emberd` (restart), `sudo launchctl bootout system/com.emberd` (stop), logs via
+`tail -f /opt/emberd/emberd.log`. Two macOS gotchas the installer handles/flags: the
+**Application Firewall** must allow the venv python for LAN clients to reach `:8765`, and on
+**macOS 15+** a daemon may need **Local Network** permission (System Settings → Privacy &
+Security → Local Network) before it can reach the sauna/Sonos — the symptom is `online:false`
+with connect timeouts in the log.
 
 > ⚠ **Single connection:** don't run any other local Tuya client against the sauna
 > (HA `tuya-local`, a second script), and keep the OEM Sun Home app closed during local use.

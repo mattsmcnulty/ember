@@ -64,8 +64,9 @@ Three components. The iOS app **never speaks Tuya** — it only talks to `emberd
 
 - **`ember/`** — SwiftUI app (iOS 26, Swift 6). Talks only to emberd; renders the Live Activity.
 - **`emberd/`** — Python (FastAPI + [tinytuya](https://github.com/jasonacox/tinytuya)) bridge on
-  the Raspberry Pi. **Sole owner** of the sauna's single Tuya LAN socket; exposes a small HTTP
-  API; pushes Live Activity updates via APNs; controls the cabin **Sonos** ("Sauna") via `soco`.
+  any always-on box — Raspberry Pi (systemd/Docker) or a Mac mini (launchd). **Sole owner** of
+  the sauna's single Tuya LAN socket; exposes a small HTTP API; pushes Live Activity updates via
+  APNs; controls the cabin **Sonos** ("Sauna") via `soco`.
   Full setup + API in [`emberd/README.md`](emberd/README.md).
 - **The sauna** — a Tuya Wi-Fi controller speaking the **Tuya LAN protocol v3.5** (AES-GCM,
   session-key handshake), on TCP port 6668.
