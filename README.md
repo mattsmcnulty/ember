@@ -52,8 +52,8 @@ Three components. The iOS app **never speaks Tuya** — it only talks to `emberd
 ```
 ┌────────────┐   HTTP/JSON over the LAN              ┌─────────────────────┐  Tuya LAN v3.5   ┌──────────┐
 │  ember     │  GET /state   POST /control           │  emberd             │  TCP 6668        │  Sauna   │
-│  iOS app   │ ───────────────────────────────────▶  │  Python on the      │  (single conn,   │  Tuya    │
-│ (SwiftUI)  │ ◀───────────────────────────────────  │  Homebridge Pi      │  reconnect/poll) │  ESP32   │
+│  iOS app   │ ───────────────────────────────────▶  │  Python on an       │  (single conn,   │  Tuya    │
+│ (SwiftUI)  │ ◀───────────────────────────────────  │  always-on box      │  reconnect/poll) │  ESP32   │
 └────┬───────┘   POST /activity/token (push token)    └──────────┬──────────┘ ───────────────▶ │ @ .1.12  │
      │                                                           │ HTTP/2 + APNs .p8            └──────────┘
      │  Live Activity (Lock Screen / Dynamic Island)             ▼
@@ -187,7 +187,7 @@ ember/                         # iOS app (SwiftUI, iOS 26, Swift 6) — xcodegen
 emberd/                        # Python bridge (FastAPI + tinytuya + soco + APNs) — see emberd/README.md
 ├── app.py  sauna.py  apns.py  sonos.py  config.py  schema.json
 ├── options.example.json       #   template; real options.json (localKey, apiKey, APNs) is gitignored
-└── deploy/                     #   install-native.sh + emberd.service (systemd on the Pi)
+└── deploy/                     #   install-native.sh (Linux systemd) + install-macos.sh (launchd)
 ```
 
 Secrets — the `localKey`, the server `apiKey`, and the APNs `.p8` — live in **gitignored**
@@ -216,9 +216,10 @@ suddenly breaks, re-extract it. The reverse-engineering scratch (`tools/phase0/`
 and ships with nothing; the steps above don't depend on it.
 
 ### emberd (the bridge)
-See [`emberd/README.md`](emberd/README.md). Short version: copy `emberd/` to the Pi, fill in
-`options.json` (`sauna.devId` / `sauna.localKey`, a long random `server.apiKey`, and optionally
-the APNs block), then `sudo bash deploy/install-native.sh` and `curl http://localhost:8765/state`.
+See [`emberd/README.md`](emberd/README.md). Short version: copy `emberd/` to your always-on box,
+fill in `options.json` (`sauna.devId` / `sauna.localKey`, a long random `server.apiKey`, and
+optionally the APNs block), then `sudo bash deploy/install-native.sh` (Linux/systemd) or
+`sudo bash deploy/install-macos.sh` (macOS/launchd), and `curl http://localhost:8765/state`.
 
 ### ember (the iOS app)
 Requires Xcode 26, [xcodegen](https://github.com/yonaskolb/XcodeGen), and an Apple Developer

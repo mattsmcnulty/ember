@@ -2,8 +2,8 @@
 
 Tiny always-on service that owns the sauna's single Tuya LAN connection and exposes
 a simple HTTP API for the **ember** iOS app. Also controls the cabin **Sonos** ("Sauna")
-and pushes **Live Activity** updates via **APNs**. Designed to run as a Docker container
-on the **Homebridge Raspberry Pi**.
+and pushes **Live Activity** updates via **APNs**. Runs on any always-on box: a
+Raspberry Pi (systemd or Docker) or a Mac mini (launchd).
 
 ## Why a bridge
 iOS can't poll a LAN device in the background often enough to drive a live Lock-Screen
@@ -114,9 +114,9 @@ EMBERD_OPTIONS=./options.json .venv/bin/uvicorn app:app --port 8765
 
 ## Troubleshooting
 - **`/state` shows `online: false`** — the device isn't answering. Confirm it's reachable on its IP
-  (tcp/6668), check `sauna.localKey` + `version: 3.5`, and watch `journalctl -u emberd -f` for
-  `Err 914 / ERR_KEY_OR_VER` (wrong key/version — the usual cause; it only shows in the log, not in
-  `/state`).
+  (tcp/6668), check `sauna.localKey` + `version: 3.5`, and watch the log (`journalctl -u emberd -f`
+  on Linux, `tail -f /opt/emberd/emberd.log` on macOS) for `Err 914 / ERR_KEY_OR_VER` (wrong
+  key/version — the usual cause; it only shows in the log, not in `/state`).
 - **Worked, then stopped** — the `localKey` probably **rotated** (re-pairing, or some OEM-app
   actions). Re-extract it (root README) and update `options.json`.
 - **Intermittent / frozen values** — something else is holding the single Tuya connection. Close the
