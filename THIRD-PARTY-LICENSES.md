@@ -26,6 +26,12 @@ copyleft obligation, since nothing is redistributed as a binary.
 No third-party Swift packages. Built entirely on Apple's SDK frameworks — **SwiftUI, ActivityKit,
 WidgetKit, HealthKit, SwiftData** — under the Apple SDK license.
 
+## homebridge-ember (Homebridge plugin)
+
+**Zero runtime dependencies** — talks to emberd over plain HTTP with Node's built-in `fetch`.
+Dev-only: [Homebridge](https://github.com/homebridge/homebridge) (Apache-2.0),
+[TypeScript](https://github.com/microsoft/TypeScript) (Apache-2.0), `@types/node` (MIT).
+
 ## Tooling (build / dev only — not shipped)
 
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) — MIT (generates the Xcode project).

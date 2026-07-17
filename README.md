@@ -47,7 +47,8 @@ background temperature push rides the internet (via Apple's APNs).
 
 ## Architecture
 
-Three components. The iOS app **never speaks Tuya** — it only talks to `emberd` over HTTP.
+Three components (plus an optional HomeKit face). The iOS app **never speaks Tuya** — it only
+talks to `emberd` over HTTP.
 
 ```
 ┌────────────┐   HTTP/JSON over the LAN              ┌─────────────────────┐  Tuya LAN v3.5   ┌──────────┐
@@ -68,6 +69,11 @@ Three components. The iOS app **never speaks Tuya** — it only talks to `emberd
   the sauna's single Tuya LAN socket; exposes a small HTTP API; pushes Live Activity updates via
   APNs; controls the cabin **Sonos** ("Sauna") via `soco`.
   Full setup + API in [`emberd/README.md`](emberd/README.md).
+- **`homebridge-ember/`** — a zero-dependency TypeScript **Homebridge plugin** that puts the
+  sauna in **HomeKit**: a thermostat tile (60–175 °F), interior lights whose color picks snap
+  to the sauna's 7 real chroma solids, and a power switch — Siri, scenes, automations, and
+  (with a home hub) remote control, all as just **another HTTP client of emberd**.
+  See [`homebridge-ember/README.md`](homebridge-ember/README.md).
 - **The sauna** — a Tuya Wi-Fi controller speaking the **Tuya LAN protocol v3.5** (AES-GCM,
   session-key handshake), on TCP port 6668.
 
@@ -188,6 +194,10 @@ emberd/                        # Python bridge (FastAPI + tinytuya + soco + APNs
 ├── app.py  sauna.py  apns.py  sonos.py  config.py  schema.json
 ├── options.example.json       #   template; real options.json (localKey, apiKey, APNs) is gitignored
 └── deploy/                     #   install-native.sh (Linux systemd) + install-macos.sh (launchd)
+
+homebridge-ember/              # HomeKit via Homebridge (TypeScript) — see homebridge-ember/README.md
+├── src/                       #   platform + thermostat / lights (color-snap) / power accessories
+└── config.schema.json         #   Homebridge UI settings form
 ```
 
 Secrets — the `localKey`, the server `apiKey`, and the APNs `.p8` — live in **gitignored**
@@ -220,6 +230,12 @@ See [`emberd/README.md`](emberd/README.md). Short version: copy `emberd/` to you
 fill in `options.json` (`sauna.devId` / `sauna.localKey`, a long random `server.apiKey`, and
 optionally the APNs block), then `sudo bash deploy/install-native.sh` (Linux/systemd) or
 `sudo bash deploy/install-macos.sh` (macOS/launchd), and `curl http://localhost:8765/state`.
+
+### HomeKit (optional)
+If you run [Homebridge](https://homebridge.io), `homebridge-ember/` adds the sauna to the Home
+app — thermostat, lights with color snapping, power switch, Siri, automations. Build + install
+from the packed tarball; see [`homebridge-ember/README.md`](homebridge-ember/README.md)
+(including the heater-safety note about `server.heaterMaxOnMinutes`).
 
 ### ember (the iOS app)
 Requires Xcode 26, [xcodegen](https://github.com/yonaskolb/XcodeGen), and an Apple Developer

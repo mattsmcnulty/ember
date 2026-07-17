@@ -1,0 +1,52 @@
+{
+  "pluginAlias": "Ember",
+  "pluginType": "platform",
+  "singular": true,
+  "headerDisplay": "Exposes a Sun Home Eclipse 2 sauna to HomeKit via a local [emberd](https://github.com/mattsmcnulty/ember) bridge. emberd must be reachable from this Homebridge host.",
+  "footerDisplay": "⚠️ This exposes a **heating appliance** to HomeKit automations. Strongly consider setting `server.heaterMaxOnMinutes` in emberd's options.json as a deadman cutoff.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "default": "Sauna",
+        "required": true
+      },
+      "baseUrl": {
+        "title": "emberd URL",
+        "type": "string",
+        "format": "uri",
+        "default": "http://localhost:8765",
+        "required": true
+      },
+      "apiKey": {
+        "title": "API Key",
+        "type": "string",
+        "description": "emberd server.apiKey (Bearer token for /control). Leave blank only if emberd auth is disabled."
+      },
+      "pollSeconds": {
+        "title": "Poll interval (seconds)",
+        "type": "integer",
+        "default": 5,
+        "minimum": 2,
+        "maximum": 60
+      },
+      "exposePowerSwitch": {
+        "title": "Expose Sauna Power switch",
+        "type": "boolean",
+        "default": true
+      },
+      "exposeLights": {
+        "title": "Expose interior lights",
+        "type": "boolean",
+        "default": true
+      },
+      "exposeRainbowSwitch": {
+        "title": "Expose Rainbow switch",
+        "type": "boolean",
+        "default": true
+      }
+    }
+  }
+}

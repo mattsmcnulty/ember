@@ -42,5 +42,10 @@ ember/Local.xcconfig
 *.psd
 *.ai
 
+# ── homebridge-ember (Node) ──
+homebridge-ember/node_modules/
+homebridge-ember/dist/
+*.tgz
+
 # ── macOS ──
 .DS_Store

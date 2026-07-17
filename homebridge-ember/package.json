@@ -1,0 +1,43 @@
+{
+  "name": "homebridge-ember",
+  "displayName": "Homebridge Ember",
+  "version": "0.1.0",
+  "description": "HomeKit control for a Sun Home Eclipse 2 infrared sauna via the emberd local bridge.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mattsmcnulty/ember.git",
+    "directory": "homebridge-ember"
+  },
+  "bugs": {
+    "url": "https://github.com/mattsmcnulty/ember/issues"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "config.schema.json",
+    "LICENSE",
+    "README.md"
+  ],
+  "keywords": [
+    "homebridge-plugin",
+    "sauna",
+    "sun-home",
+    "eclipse-2",
+    "infrared-sauna"
+  ],
+  "engines": {
+    "homebridge": "^1.8.0 || ^2.0.0-beta.0",
+    "node": ">=18.15.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "homebridge": "^1.8.0",
+    "typescript": "^5.6.0"
+  }
+}
