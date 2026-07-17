@@ -42,6 +42,10 @@ export class EmberPlatform implements DynamicPlatformPlugin {
   private wasOffline = false;
   private authErrorLogged = false;
   private controlChain: Promise<unknown> = Promise.resolve();
+  // Bumped when a control starts AND when it finishes: a poll that began before
+  // either point may carry pre-control state and must not repaint the tiles
+  // (the same stale-poll race the iOS store guards against with its epoch).
+  private controlEpoch = 0;
 
   constructor(
     public readonly log: Logging,
@@ -106,10 +110,14 @@ export class EmberPlatform implements DynamicPlatformPlugin {
   }
 
   private async poll(): Promise<void> {
+    const epoch = this.controlEpoch;
     try {
       const state = await this.client.getState();
       this.pollFailures = 0;
       this.reachable = true;
+      if (epoch !== this.controlEpoch) {
+        return; // a control ran while this poll was in flight — its fresh state wins
+      }
       if (this.wasOffline) {
         this.log.info('emberd recovered');
         this.wasOffline = false;
@@ -140,8 +148,10 @@ export class EmberPlatform implements DynamicPlatformPlugin {
    *  overlay guarantees the next polls won't revert it. */
   public control(body: ControlBody): Promise<void> {
     const run = this.controlChain.then(async () => {
+      this.controlEpoch += 1;
       try {
         const fresh = await this.client.control(body);
+        this.controlEpoch += 1;
         this.applyAll(fresh);
         this.authErrorLogged = false;
       } catch (e) {
