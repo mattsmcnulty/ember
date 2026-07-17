@@ -8,7 +8,7 @@ Adds three accessories to the Home app:
 
 | Accessory | Service | What it does |
 |---|---|---|
-| **Sauna** | Thermostat | Live temperature, target dial (60–175 °F), heat on/off. "Hey Siri, set the sauna to 155 degrees." Heat on powers the cabin on too (mirrors the ember app's Start); heat off stops only the heater. |
+| **Sauna** | Thermostat | Live temperature, target dial (60–175 °F), heat on/off. "Hey Siri, set the sauna to 155 degrees." Heat mirrors the ember app's Start (powers the cabin on and heats); Off mirrors Stop (full off — power and heater). |
 | **Sauna Lights** | Lightbulb (+ linked "Rainbow" switch) | Interior lights on/off and color. The sauna supports exactly 7 solid colors, so any pick on the HomeKit color wheel **snaps to the nearest real color** (low saturation = white). The Rainbow switch runs the sauna's slow color cycle. |
 | **Sauna Power** | Switch | The independent cabin-power toggle. Off = full stop (power + heater), like the ember app's Stop. |
 

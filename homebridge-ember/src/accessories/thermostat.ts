@@ -67,9 +67,10 @@ export class SaunaThermostat implements AccessoryHandler {
           // mirror the app's Start: heat auto-powers the cabin on
           await this.platform.control({ power: true, heater: true });
         } else {
-          // heater-only off: "stop heating", not "black out the cabin" —
-          // the Sauna Power switch is the full-off control
-          await this.platform.control({ heater: false });
+          // mirror the app's Stop: full off. Heater-only off read as "it didn't
+          // turn off" at the cabin (lights/panel stay lit); the Power switch
+          // still allows lights-only power-on without heat.
+          await this.platform.control({ power: false, heater: false });
         }
       });
 
