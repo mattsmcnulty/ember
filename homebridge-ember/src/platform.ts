@@ -39,6 +39,7 @@ export class EmberPlatform implements DynamicPlatformPlugin {
   private readonly cached = new Map<string, PlatformAccessory>();
   private readonly handlers: AccessoryHandler[] = [];
   private pollFailures = 0;
+  private saunaOfflinePolls = 0;
   private wasOffline = false;
   private authErrorLogged = false;
   private controlChain: Promise<unknown> = Promise.resolve();
@@ -114,16 +115,26 @@ export class EmberPlatform implements DynamicPlatformPlugin {
     try {
       const state = await this.client.getState();
       this.pollFailures = 0;
-      this.reachable = true;
       if (epoch !== this.controlEpoch) {
         return; // a control ran while this poll was in flight — its fresh state wins
       }
-      if (this.wasOffline) {
-        this.log.info('emberd recovered');
-        this.wasOffline = false;
-      }
+      // emberd serves cached values with online:false while the sauna itself is
+      // unreachable — surface that as No Response too, or the tiles keep showing
+      // confident stale state during a sauna outage.
       if (!state.online) {
-        this.log.debug('sauna offline (Tuya not answering); serving last-known state');
+        this.saunaOfflinePolls += 1;
+        if (this.saunaOfflinePolls >= 3 && !this.wasOffline) {
+          this.reachable = false;
+          this.wasOffline = true;
+          this.log.warn('sauna unreachable (Tuya not answering) — accessories will show No Response');
+        }
+        return; // don't repaint tiles with cached values we know are unverified
+      }
+      this.saunaOfflinePolls = 0;
+      this.reachable = true;
+      if (this.wasOffline) {
+        this.log.info('sauna/emberd recovered');
+        this.wasOffline = false;
       }
       this.applyAll(state);
     } catch (e) {
