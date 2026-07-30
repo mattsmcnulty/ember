@@ -10,6 +10,15 @@ enum EmberError: LocalizedError {
         case .offline: return "Can't reach emberd"
         }
     }
+    /// Transient faults worth one silent retry (the sauna module's LAN side flakes);
+    /// auth/validation failures are real and surface immediately.
+    var isRetryable: Bool {
+        switch self {
+        case .offline: return true
+        case .http(let c): return c >= 500
+        case .badURL, .unauthorized: return false
+        }
+    }
 }
 
 /// Thin async client for the emberd HTTP API. Reads (`/state`) are open;

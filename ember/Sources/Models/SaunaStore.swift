@@ -91,7 +91,7 @@ final class SaunaStore {
         var s = state; optimistic(&s); state = s
         beginBusy(); defer { endBusy() }
         do {
-            let result = try await client.control(req)
+            let result = try await controlWithRetry(client, req, epoch: epoch)
             guard epoch == controlEpoch else { return }   // a newer control/nudge superseded this — don't clobber
             state = result
             reconcileTimerDeadline(with: result)
@@ -100,6 +100,19 @@ final class SaunaStore {
             guard epoch == controlEpoch else { return }
             lastError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
             await refresh()
+        }
+    }
+
+    /// One silent retry on transient faults before any error reaches the UI. Safe to
+    /// re-send: emberd's verified toggle writes are intent-idempotent (a command that
+    /// already landed reads "already there" and no-ops rather than toggling back).
+    private func controlWithRetry(_ client: EmberClient, _ req: ControlRequest, epoch: Int) async throws -> SaunaState {
+        do {
+            return try await client.control(req)
+        } catch let e as EmberError where e.isRetryable {
+            try? await Task.sleep(for: .seconds(2))   // let a flaky module catch its breath
+            guard epoch == controlEpoch else { throw e }  // superseded — don't re-issue a stale command
+            return try await client.control(req)
         }
     }
 
