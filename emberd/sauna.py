@@ -242,18 +242,66 @@ class SaunaClient:
         self._stick(dp, value)
         return self.state()
 
+    async def _read_dps(self) -> dict:
+        """One fresh, successful status read — raises instead of silently serving the
+        cache. Toggle decisions must never run on stale/failed reads: deciding "already
+        on" from a lie is exactly how a Start becomes a silent no-op."""
+        st = await self._io(lambda d: d.status())
+        code = _err_code(st)
+        if code:
+            self._handle_error(code, st)
+            await self._drop_connection()
+            raise RuntimeError(f"device read failed (Err {code})")
+        dps = st.get("dps") if isinstance(st, dict) else None
+        if not dps:
+            raise RuntimeError("device returned no dps")
+        self._raw.update(dps)
+        self._apply_pending(dps)
+        self._online = True
+        self._updated = time.time()
+        return dps
+
+    async def _await_status(self, dp: str, desired: bool) -> Optional[bool]:
+        """Watch a status DP (raw frames, bypassing the sticky overlay) until it reports
+        `desired` or the budget runs out. Returns True on confirm, False if the device
+        definitively reports the wrong value, None if it never answered usably."""
+        seen: Optional[bool] = None
+        for delay in (0.5, 1.0, 1.0, 1.5, 2.0):
+            await asyncio.sleep(delay)
+            try:
+                dps = await self._read_dps()
+            except Exception:
+                continue  # transient — keep waiting within the budget
+            if dp in dps:
+                seen = bool(dps[dp])
+                if seen == desired:
+                    return True
+        return None if seen is None else False
+
     async def _set_bool(self, write_dp: str, status_dp: str, desired: bool) -> dict:
         """Toggle-style controls: a write flips the current state regardless of the value
-        sent. Read the current state and only write when it must change — which is also
-        correct if the DP turns out to be a plain level. Avoids e.g. Start toggling an
-        already-on sauna back off."""
-        await self.refresh()
-        if bool(self._raw.get(status_dp, False)) == desired:
+        sent, so read first and only write on a mismatch. The module's LAN side has been
+        caught ACKing writes without executing them, so every write is now VERIFIED
+        against the status DP and retried once — and a definite failure raises instead of
+        returning phantom success."""
+        dps = await self._read_dps()
+        if bool(dps.get(status_dp, False)) == desired:
             return self.state()
-        await self.set_dp(write_dp, desired)  # flips it to `desired`
-        if status_dp != write_dp:
-            self._stick(status_dp, desired)
-        return self.state()
+        for attempt in (1, 2):
+            await self.set_dp(write_dp, desired)  # flips it to `desired`
+            if status_dp != write_dp:
+                self._stick(status_dp, desired)
+            confirmed = await self._await_status(status_dp, desired)
+            if confirmed:
+                return self.state()
+            if confirmed is None:
+                # reads went dark mid-verify — a blind second toggle could invert;
+                # fail honestly and let the client show the error
+                raise RuntimeError(f"could not verify DP{write_dp} command (device not answering)")
+            log.warning("DP%s write attempt %d not reflected on DP%s — %s",
+                        write_dp, attempt, status_dp,
+                        "retrying" if attempt == 1 else "giving up")
+        raise RuntimeError(f"device did not execute the DP{write_dp} command")
 
     async def set_power(self, on: bool):
         return await self._set_bool(DP_POWER, DP_POWER_STATUS, bool(on))

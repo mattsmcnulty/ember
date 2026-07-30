@@ -72,6 +72,9 @@ struct EmberClient: Sendable {
                                     body: (any Encodable)? = nil) async throws -> T {
         var req = URLRequest(url: base.appendingPathComponent(path))
         req.httpMethod = method
+        // Polls must fail fast; mutations ride out emberd's verified toggle writes
+        // (read → toggle → confirm the status DP actually changed → retry once).
+        req.timeoutInterval = method == "GET" ? 6 : 30
         if let body {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = try Self.encoder.encode(AnyEncodable(body))

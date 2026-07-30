@@ -45,7 +45,8 @@ export class EmberdClient {
     return (await res.json()) as EmberdState;
   }
 
-  /** POST /control does real Tuya round-trips (reconnect per write) — generous timeout. */
+  /** POST /control does verified Tuya toggle writes (read → write → confirm the status
+   *  DP changed → retry once) — generous timeout. */
   async control(body: ControlBody): Promise<EmberdState> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (this.apiKey) {
@@ -55,7 +56,7 @@ export class EmberdClient {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(30000),
     });
     if (res.status === 401) {
       throw new AuthError();
