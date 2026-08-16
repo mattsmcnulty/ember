@@ -37,6 +37,11 @@ ember/Local.xcconfig
 # ── Local tooling / machine-specific (never commit) ──
 # Local agent/editor settings — may hold machine-specific paths or secrets.
 .claude/
+.cursor/
+.mcp.json
+CLAUDE.md
+AGENTS.md
+BALLADEER.md
 
 # ── Design source (large editable binaries; the exported PNGs are tracked, these are not) ──
 *.psd
