@@ -10,6 +10,10 @@ final class SaunaStore {
     var state = SaunaState()
     var reachable = false
     var lastError: String?
+    /// Live feedback while a control is being retried ("slow to respond…"); nil otherwise.
+    private(set) var controlNotice: String?
+    /// A control that failed after all retries — shown on the Control tab until the next control.
+    private(set) var controlError: String?
     private(set) var busy = false
     /// Self-ticking countdown anchor for the heat timer (nil = no timer running).
     private(set) var timerDeadline: Date?
@@ -89,6 +93,7 @@ final class SaunaStore {
         controlEpoch += 1
         let epoch = controlEpoch                   // this control's generation
         var s = state; optimistic(&s); state = s
+        controlError = nil
         beginBusy(); defer { endBusy() }
         do {
             let result = try await controlWithRetry(client, req, epoch: epoch)
@@ -99,20 +104,42 @@ final class SaunaStore {
         } catch {
             guard epoch == controlEpoch else { return }
             lastError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+            controlError = Self.friendly(error)
+            Haptics.toggle()
             await refresh()
+        }
+        controlNotice = nil
+    }
+
+    private static func friendly(_ error: Error) -> String {
+        switch error as? EmberError {
+        case .unauthorized: return "Wrong or missing API key — check Settings"
+        case .offline: return "Can't reach the sauna bridge"
+        case .http(let c) where c >= 500: return "The sauna didn't respond — try again"
+        default: return (error as? LocalizedError)?.errorDescription ?? "Control failed — try again"
         }
     }
 
-    /// One silent retry on transient faults before any error reaches the UI. Safe to
-    /// re-send: emberd's verified toggle writes are intent-idempotent (a command that
-    /// already landed reads "already there" and no-ops rather than toggling back).
+    /// Up to two silent retries on transient faults before any error reaches the UI,
+    /// spaced 2s then 8s — the sauna's Tuya module recovers from its write-ignoring
+    /// funk on a ~10s scale (observed 2026-08-16), so spaced re-sends succeed where
+    /// back-to-back ones fail. Safe to re-send: emberd's verified toggle writes are
+    /// intent-idempotent (a command that already landed reads "already there" and
+    /// no-ops rather than toggling back).
     private func controlWithRetry(_ client: EmberClient, _ req: ControlRequest, epoch: Int) async throws -> SaunaState {
-        do {
-            return try await client.control(req)
-        } catch let e as EmberError where e.isRetryable {
-            try? await Task.sleep(for: .seconds(2))   // let a flaky module catch its breath
-            guard epoch == controlEpoch else { throw e }  // superseded — don't re-issue a stale command
-            return try await client.control(req)
+        let backoff: [Duration] = [.seconds(2), .seconds(8)]
+        var attempt = 0
+        while true {
+            do {
+                let result = try await client.control(req)
+                controlNotice = nil
+                return result
+            } catch let e as EmberError where e.isRetryable && attempt < backoff.count {
+                controlNotice = "Sauna is slow to respond — retrying…"
+                try? await Task.sleep(for: backoff[attempt])
+                attempt += 1
+                guard epoch == controlEpoch else { throw e }  // superseded — don't re-issue a stale command
+            }
         }
     }
 

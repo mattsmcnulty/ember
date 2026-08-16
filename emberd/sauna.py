@@ -266,7 +266,7 @@ class SaunaClient:
         `desired` or the budget runs out. Returns True on confirm, False if the device
         definitively reports the wrong value, None if it never answered usably."""
         seen: Optional[bool] = None
-        for delay in (0.5, 1.0, 1.0, 1.5, 2.0):
+        for delay in (0.5, 1.0, 1.5, 2.0):
             await asyncio.sleep(delay)
             try:
                 dps = await self._read_dps()
@@ -281,26 +281,24 @@ class SaunaClient:
     async def _set_bool(self, write_dp: str, status_dp: str, desired: bool) -> dict:
         """Toggle-style controls: a write flips the current state regardless of the value
         sent, so read first and only write on a mismatch. The module's LAN side has been
-        caught ACKing writes without executing them, so every write is now VERIFIED
-        against the status DP and retried once — and a definite failure raises instead of
-        returning phantom success."""
+        caught ACKing writes without executing them, so the write is VERIFIED against the
+        status DP and a miss raises instead of returning phantom success.
+
+        ONE attempt per request, deliberately: observed 2026-08-16, back-to-back
+        in-request retries fail together while a fresh attempt ~10s later succeeds —
+        the module recovers on a ~10s scale. Failing fast (~8s) keeps every /control
+        inside client timeout budgets; the clients own the spaced retries."""
         dps = await self._read_dps()
         if bool(dps.get(status_dp, False)) == desired:
             return self.state()
-        for attempt in (1, 2):
-            await self.set_dp(write_dp, desired)  # flips it to `desired`
-            if status_dp != write_dp:
-                self._stick(status_dp, desired)
-            confirmed = await self._await_status(status_dp, desired)
-            if confirmed:
-                return self.state()
-            if confirmed is None:
-                # reads went dark mid-verify — a blind second toggle could invert;
-                # fail honestly and let the client show the error
-                raise RuntimeError(f"could not verify DP{write_dp} command (device not answering)")
-            log.warning("DP%s write attempt %d not reflected on DP%s — %s",
-                        write_dp, attempt, status_dp,
-                        "retrying" if attempt == 1 else "giving up")
+        await self.set_dp(write_dp, desired)  # flips it to `desired`
+        if status_dp != write_dp:
+            self._stick(status_dp, desired)
+        confirmed = await self._await_status(status_dp, desired)
+        if confirmed:
+            return self.state()
+        log.warning("DP%s write not reflected on DP%s — failing fast for a spaced client retry",
+                    write_dp, status_dp)
         raise RuntimeError(f"device did not execute the DP{write_dp} command")
 
     async def set_power(self, on: bool):

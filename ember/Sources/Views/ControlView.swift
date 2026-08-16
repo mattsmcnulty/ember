@@ -11,6 +11,7 @@ struct ControlView: View {
                 HeroGauge(state: s)
                     .padding(.top, 4)
                 StartStopButton()
+                ControlFeedback()
                 TargetCard(state: s)
                 TimerCard(state: s)
                 LightsCard(state: s)
@@ -165,6 +166,26 @@ private struct StartStopButton: View {
         .buttonStyle(.plain)
         .disabled(store.busy)
         .opacity(store.busy ? 0.7 : 1)
+    }
+}
+
+/// Live feedback for slow/failed controls — a stubborn sauna module must never
+/// fail silently again (a Start once spent 45s recovering with zero on-screen signal).
+private struct ControlFeedback: View {
+    @Environment(SaunaStore.self) private var store
+    var body: some View {
+        if let notice = store.controlNotice {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text(notice)
+            }
+            .font(.system(.footnote, design: .rounded))
+            .foregroundStyle(Theme.amber)
+        } else if let error = store.controlError {
+            Label(error, systemImage: "exclamationmark.triangle.fill")
+                .font(.system(.footnote, design: .rounded, weight: .medium))
+                .foregroundStyle(Theme.emberHot)
+        }
     }
 }
 
