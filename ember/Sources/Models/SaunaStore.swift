@@ -88,15 +88,20 @@ final class SaunaStore {
     }
 
     // MARK: control
-    private func control(_ req: ControlRequest, _ optimistic: (inout SaunaState) -> Void) async {
+    /// `quiet` = background-style adjustments (the temp stepper): retries still happen,
+    /// but without the "retrying…" banner, failure message, or haptic — a temp write
+    /// that ultimately fails simply reconciles back from the next poll.
+    private func control(_ req: ControlRequest, quiet: Bool = false,
+                         _ optimistic: (inout SaunaState) -> Void) async {
         guard let client else { return }
         controlEpoch += 1
         let epoch = controlEpoch                   // this control's generation
         var s = state; optimistic(&s); state = s
         controlError = nil
         beginBusy(); defer { endBusy() }
+        defer { controlNotice = nil }   // every exit path — a superseded request must not strand the banner
         do {
-            let result = try await controlWithRetry(client, req, epoch: epoch)
+            let result = try await controlWithRetry(client, req, epoch: epoch, quiet: quiet)
             guard epoch == controlEpoch else { return }   // a newer control/nudge superseded this — don't clobber
             state = result
             reconcileTimerDeadline(with: result)
@@ -104,11 +109,12 @@ final class SaunaStore {
         } catch {
             guard epoch == controlEpoch else { return }
             lastError = (error as? LocalizedError)?.errorDescription ?? "\(error)"
-            controlError = Self.friendly(error)
-            Haptics.toggle()
+            if !quiet {
+                controlError = Self.friendly(error)
+                Haptics.toggle()
+            }
             await refresh()
         }
-        controlNotice = nil
     }
 
     private static func friendly(_ error: Error) -> String {
@@ -126,7 +132,8 @@ final class SaunaStore {
     /// back-to-back ones fail. Safe to re-send: emberd's verified toggle writes are
     /// intent-idempotent (a command that already landed reads "already there" and
     /// no-ops rather than toggling back).
-    private func controlWithRetry(_ client: EmberClient, _ req: ControlRequest, epoch: Int) async throws -> SaunaState {
+    private func controlWithRetry(_ client: EmberClient, _ req: ControlRequest,
+                                  epoch: Int, quiet: Bool = false) async throws -> SaunaState {
         let backoff: [Duration] = [.seconds(2), .seconds(8)]
         var attempt = 0
         while true {
@@ -135,7 +142,8 @@ final class SaunaStore {
                 controlNotice = nil
                 return result
             } catch let e as EmberError where e.isRetryable && attempt < backoff.count {
-                controlNotice = "Sauna is slow to respond — retrying…"
+                guard epoch == controlEpoch else { throw e }  // superseded — bail before any banner/sleep
+                if !quiet { controlNotice = "Sauna is slow to respond — retrying…" }
                 try? await Task.sleep(for: backoff[attempt])
                 attempt += 1
                 guard epoch == controlEpoch else { throw e }  // superseded — don't re-issue a stale command
@@ -164,7 +172,7 @@ final class SaunaStore {
         await SaunaActivityController.shared.updateHeater(state.heater, state: state)
     }
     func setHeater(_ on: Bool) async { Haptics.toggle(); await control(.init(heater: on)) { $0.heater = on } }
-    func setTarget(_ f: Int) async { await control(.init(targetTempF: f)) { $0.targetTempF = f } }
+    func setTarget(_ f: Int) async { await control(.init(targetTempF: f), quiet: true) { $0.targetTempF = f } }
     func setTimer(_ m: Int) async {
         Haptics.tap()
         if m > 0, state.heater { timerDeadline = Date().addingTimeInterval(TimeInterval(m) * 60) }  // optimistic countdown
@@ -187,7 +195,9 @@ final class SaunaStore {
         Haptics.tap()
         targetSendTask?.cancel()
         targetSendTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(450))
+            // 700ms idle window: a deliberate tap-tap-tap cadence (~500-600ms) keeps
+            // extending it, so a whole burst coalesces into ONE write of the final value
+            try? await Task.sleep(for: .milliseconds(700))
             guard let self, !Task.isCancelled else { return }
             await self.setTarget(self.state.targetTempF ?? v)   // single write to emberd
             self.nudgeHoldsBusy = false
