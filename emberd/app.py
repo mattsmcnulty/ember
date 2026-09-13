@@ -163,13 +163,17 @@ async def debug_set(body: dict):
 async def control(body: ControlBody):
     st = sauna.state()
     try:
-        if body.power is not None:
+        started = body.power is True and body.heater is True
+        if started:
+            # a Start intent: one convergent sequence with phantom-DP20 recovery
+            st = await sauna.start_heating()
+        elif body.power is not None:
             st = await sauna.set_power(body.power)
         if body.targetTempF is not None:
             st = await sauna.set_target_temp(body.targetTempF)
         if body.timerMin is not None:
             st = await sauna.set_timer(body.timerMin)
-        if body.heater is not None:
+        if body.heater is not None and not started:
             st = await sauna.set_heater(body.heater)
         if body.footwell is not None:
             st = await sauna.set_footwell(body.footwell)

@@ -66,6 +66,7 @@ class SaunaClient:
         self._dev: Optional[tinytuya.Device] = None
         self._lock: Optional[asyncio.Lock] = None  # created in start() under the running loop
         self._raw: dict[str, Any] = {}
+        self._last_polled: dict[str, Any] = {}  # last DEVICE-reported frame (no overlay)
         self._pending: dict[str, tuple[Any, float]] = {}  # dp -> (commanded value, expires_at)
         self._online = False
         self._updated = 0.0
@@ -163,15 +164,30 @@ class SaunaClient:
             self._online = False
             log.debug("status returned no dps: %s", st)
             return self.state()
-        self._raw.update(dps)
-        self._apply_pending(dps)
-        self._online = True
-        self._updated = time.time()
+        self._merge_polled(dps)
         cf = self._raw.get(DP_CURRENT_F)
         if isinstance(cf, int):
             self._temp_history.append((self._updated, cf))
             self._temp_history = self._temp_history[-5000:]
         return self.state()
+
+    # DPs whose transitions are worth a forensic log line (name shown in the log).
+    _WATCHED_DPS = {"20": "powerStatus", "110": "powerToggle", "114": "heater",
+                    "113": "lights", "101": "rainbow", "116": "timerSet"}
+
+    def _merge_polled(self, dps: dict) -> None:
+        """Merge a successful device frame into the cache — and log every transition of
+        a watched DP as the DEVICE reported it (vs the last device frame, so our own
+        sticky overlay can't pollute the diff). This is the forensic trail for the
+        phantom-DP20 problem: e.g. whether a panel power-off ever reports 20→False."""
+        for dp, name in self._WATCHED_DPS.items():
+            if dp in dps and dp in self._last_polled and dps[dp] != self._last_polled[dp]:
+                log.info("device: DP%s (%s) %s -> %s", dp, name, self._last_polled[dp], dps[dp])
+        self._last_polled.update(dps)
+        self._raw.update(dps)
+        self._apply_pending(dps)
+        self._online = True
+        self._updated = time.time()
 
     def state(self) -> dict:
         r = self._raw
@@ -255,18 +271,16 @@ class SaunaClient:
         dps = st.get("dps") if isinstance(st, dict) else None
         if not dps:
             raise RuntimeError("device returned no dps")
-        self._raw.update(dps)
-        self._apply_pending(dps)
-        self._online = True
-        self._updated = time.time()
+        self._merge_polled(dps)
         return dps
 
-    async def _await_status(self, dp: str, desired: bool) -> Optional[bool]:
+    async def _await_status(self, dp: str, desired: bool,
+                            delays: tuple = (0.5, 1.0, 1.5, 2.0)) -> Optional[bool]:
         """Watch a status DP (raw frames, bypassing the sticky overlay) until it reports
         `desired` or the budget runs out. Returns True on confirm, False if the device
         definitively reports the wrong value, None if it never answered usably."""
         seen: Optional[bool] = None
-        for delay in (0.5, 1.0, 1.5, 2.0):
+        for delay in delays:
             await asyncio.sleep(delay)
             try:
                 dps = await self._read_dps()
@@ -278,7 +292,8 @@ class SaunaClient:
                     return True
         return None if seen is None else False
 
-    async def _set_bool(self, write_dp: str, status_dp: str, desired: bool) -> dict:
+    async def _set_bool(self, write_dp: str, status_dp: str, desired: bool,
+                        quick: bool = False) -> dict:
         """Toggle-style controls: a write flips the current state regardless of the value
         sent, so read first and only write on a mismatch. The module's LAN side has been
         caught ACKing writes without executing them, so the write is VERIFIED against the
@@ -287,14 +302,17 @@ class SaunaClient:
         ONE attempt per request, deliberately: observed 2026-08-16, back-to-back
         in-request retries fail together while a fresh attempt ~10s later succeeds —
         the module recovers on a ~10s scale. Failing fast (~8s) keeps every /control
-        inside client timeout budgets; the clients own the spaced retries."""
+        inside client timeout budgets; the clients own the spaced retries.
+        `quick` shortens the verify budget (start_heating's recovery attempts, so the
+        whole recovery sequence stays inside the clients' 30s)."""
         dps = await self._read_dps()
         if bool(dps.get(status_dp, False)) == desired:
             return self.state()
         await self.set_dp(write_dp, desired)  # flips it to `desired`
         if status_dp != write_dp:
             self._stick(status_dp, desired)
-        confirmed = await self._await_status(status_dp, desired)
+        confirmed = await self._await_status(status_dp, desired,
+                                             delays=(0.5, 1.0, 1.5) if quick else (0.5, 1.0, 1.5, 2.0))
         if confirmed:
             return self.state()
         log.warning("DP%s write not reflected on DP%s — failing fast for a spaced client retry",
@@ -303,6 +321,39 @@ class SaunaClient:
 
     async def set_power(self, on: bool):
         return await self._set_bool(DP_POWER, DP_POWER_STATUS, bool(on))
+
+    async def start_heating(self) -> dict:
+        """Power + heater ON as ONE intent, with phantom-status recovery.
+
+        Live-captured 2026-09-13: after long idle the module can report DP20=True
+        while the cabin is physically off (raw: 20=True, 110=False). A naive start
+        then SKIPS the power toggle ("already on") and the heater write cannot
+        execute — no cabin power — so every Start fails until something toggles
+        power for real. Because this intent's end state is fully known, corrective
+        power toggles are CONVERGENT:
+          - phantom-on (cabin off): toggle → cabin on → heater verifies ✓
+          - genuinely on (heater merely flaked): toggle → cabin off → heater fails
+            → second toggle → cabin back on → heater verifies ✓
+        Either way we end powered + heating, or raise honestly."""
+        dps = await self._read_dps()
+        if not bool(dps.get(DP_POWER_STATUS, False)):
+            # reports off — no ambiguity: verified power-on, then heater
+            await self._set_bool(DP_POWER, DP_POWER_STATUS, True)
+            return await self._set_bool(DP_HEATER, DP_HEATER, True)
+        # reports on — possibly phantom; prove it with the heater, recover with toggles
+        last_err: Optional[Exception] = None
+        for attempt in range(3):
+            try:
+                return await self._set_bool(DP_HEATER, DP_HEATER, True, quick=attempt > 0)
+            except RuntimeError as e:
+                last_err = e
+                if attempt == 2:
+                    break
+                log.warning("heater won't execute while DP20 claims power on — possible "
+                            "phantom status; corrective power toggle %d/2", attempt + 1)
+                await self.set_dp(DP_POWER, True)  # momentary toggle: flips the REAL state
+                self._stick(DP_POWER_STATUS, True)
+        raise RuntimeError(f"could not start heating: {last_err}")
 
     async def set_heater(self, on: bool):
         return await self._set_bool(DP_HEATER, DP_HEATER, bool(on))
