@@ -67,6 +67,7 @@ class SaunaClient:
         self._lock: Optional[asyncio.Lock] = None  # created in start() under the running loop
         self._raw: dict[str, Any] = {}
         self._last_polled: dict[str, Any] = {}  # last DEVICE-reported frame (no overlay)
+        self._disagree_polls = 0  # consecutive polls with DP20 != DP110 (phantom detector)
         self._pending: dict[str, tuple[Any, float]] = {}  # dp -> (commanded value, expires_at)
         self._online = False
         self._updated = 0.0
@@ -184,6 +185,19 @@ class SaunaClient:
             if dp in dps and dp in self._last_polled and dps[dp] != self._last_polled[dp]:
                 log.info("device: DP%s (%s) %s -> %s", dp, name, self._last_polled[dp], dps[dp])
         self._last_polled.update(dps)
+        # Phantom detector: in every honest state observed, DP20 (power status) and
+        # DP110 (toggle readback) AGREE; in the captured phantom (2026-09-13) they
+        # disagreed (20=True, 110=False, cabin dark). Brief disagreement is normal
+        # mid-toggle, so only a sustained one is flagged.
+        if ("20" in self._last_polled and "110" in self._last_polled
+                and bool(self._last_polled["20"]) != bool(self._last_polled["110"])):
+            self._disagree_polls += 1
+            if self._disagree_polls == 3:
+                log.warning("DP20=%s vs DP110=%s for 3+ polls — possible phantom power "
+                            "status (start_heating self-recovers; raw DP110 toggle fixes manually)",
+                            self._last_polled["20"], self._last_polled["110"])
+        else:
+            self._disagree_polls = 0
         self._raw.update(dps)
         self._apply_pending(dps)
         self._online = True
