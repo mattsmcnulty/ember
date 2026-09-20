@@ -318,24 +318,48 @@ async def _push_loop():
             log.warning("push loop error: %s", e)
 
 
+async def _stop_sauna(reason: str):
+    """Full stop (heater, then power) — same as the app's Stop."""
+    log.warning("%s — stopping the sauna", reason)
+    with contextlib.suppress(Exception):
+        await sauna.set_heater(False)
+    with contextlib.suppress(Exception):
+        await sauna.set_power(False)
+
+
 async def _heater_watchdog():
-    """Optional safety deadman: auto-off the heater if left on past server.heaterMaxOnMinutes."""
+    """Two safety checks every 30s:
+    - timer expiry: the device's own timer reaching 0 has not reliably shut the heater
+      off (observed 2026-09-20), so emberd enforces it — after two consecutive ticks
+      (60s) of heater-on with a timer set and 0 remaining, to ride out the device's
+      lag right after a timer is (re)set.
+    - deadman: heater on longer than server.heaterMaxOnMinutes (if configured)."""
     global _heater_on_since
-    if _heater_max_on_sec is None:
-        return  # disabled by default
+    expired_ticks = 0
     while True:
         try:
             await asyncio.sleep(30)
-            on = sauna.state().get("heater")
+            st = sauna.state()
+            on = st.get("heater")
             if not on:
                 _heater_on_since = None
+                expired_ticks = 0
+                continue
+            if (st.get("timerSetMin") or 0) > 0 and st.get("timerRemainingMin") == 0:
+                expired_ticks += 1
+                if expired_ticks >= 2:
+                    await _stop_sauna("timer reached 0 with the heater still on")
+                    expired_ticks = 0
+                    _heater_on_since = None
+                    continue
+            else:
+                expired_ticks = 0
+            if _heater_max_on_sec is None:
                 continue
             if _heater_on_since is None:
                 _heater_on_since = time.time()
             elif time.time() - _heater_on_since >= _heater_max_on_sec:
-                log.warning("heater on > %ss — deadman auto-off", _heater_max_on_sec)
-                with contextlib.suppress(Exception):
-                    await sauna.set_heater(False)
+                await _stop_sauna(f"heater on > {_heater_max_on_sec}s (deadman)")
                 _heater_on_since = None
         except asyncio.CancelledError:
             raise

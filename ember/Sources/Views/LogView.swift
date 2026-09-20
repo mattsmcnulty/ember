@@ -85,12 +85,13 @@ struct LogView: View {
         let end = Date()
         activeStart = 0
         Task {
-            let result = await store.endSession()
+            let result = await store.endSession()   // record the peak before the heat goes off
             let session = SaunaSession(start: start, end: end,
                                        peakTempF: result?.peakTempF ?? store.state.currentTempF,
                                        targetTempF: store.state.targetTempF)
             ctx.insert(session)
             try? ctx.save()
+            await store.stop()   // Get Out = done with the sauna: power + heater off, same as Stop
             await HealthKitManager.shared.log(start: start, end: end, peakTempF: session.peakTempF)
             await SaunaActivityController.shared.endSession(state: store.state)
         }
