@@ -203,10 +203,22 @@ class SaunaClient:
         self._online = True
         self._updated = time.time()
 
+    @staticmethod
+    def _power_from(dps: dict) -> bool:
+        """The trustworthy power state. DP20 is the nominal status but has been caught
+        STUCK in both directions (phantom-on 2026-09-13, phantom-off 2026-09-20) while
+        DP110's readback tracked the real cabin state in every captured incident —
+        including panel-initiated changes. Honest states have them agreeing; on
+        disagreement, DP110 wins."""
+        p20, p110 = dps.get(DP_POWER_STATUS), dps.get(DP_POWER)
+        if p110 is not None and p20 is not None and bool(p20) != bool(p110):
+            return bool(p110)
+        return bool(p20) if p20 is not None else bool(p110)
+
     def state(self) -> dict:
         r = self._raw
         return {
-            "power": bool(r.get(DP_POWER_STATUS, False)),
+            "power": self._power_from(r),
             "heater": bool(r.get(DP_HEATER, False)),
             "currentTempF": r.get(DP_CURRENT_F),
             "currentTempC": r.get(DP_CURRENT_C),
@@ -288,11 +300,13 @@ class SaunaClient:
         self._merge_polled(dps)
         return dps
 
-    async def _await_status(self, dp: str, desired: bool,
+    async def _await_status(self, watch: tuple, desired: bool,
                             delays: tuple = (0.5, 1.0, 1.5, 2.0)) -> Optional[bool]:
-        """Watch a status DP (raw frames, bypassing the sticky overlay) until it reports
+        """Watch status DPs (raw frames, bypassing the sticky overlay) until ANY reports
         `desired` or the budget runs out. Returns True on confirm, False if the device
-        definitively reports the wrong value, None if it never answered usably."""
+        definitively reported only the wrong value, None if it never answered usably.
+        Power passes both DP20 and DP110: either one reflecting the command counts,
+        because DP20 has been caught stuck in both directions while DP110 tracked truth."""
         seen: Optional[bool] = None
         for delay in delays:
             await asyncio.sleep(delay)
@@ -300,10 +314,11 @@ class SaunaClient:
                 dps = await self._read_dps()
             except Exception:
                 continue  # transient — keep waiting within the budget
-            if dp in dps:
-                seen = bool(dps[dp])
-                if seen == desired:
-                    return True
+            for dp in watch:
+                if dp in dps:
+                    seen = bool(dps[dp])
+                    if seen == desired:
+                        return True
         return None if seen is None else False
 
     async def _set_bool(self, write_dp: str, status_dp: str, desired: bool,
@@ -319,13 +334,16 @@ class SaunaClient:
         inside client timeout budgets; the clients own the spaced retries.
         `quick` shortens the verify budget (start_heating's recovery attempts, so the
         whole recovery sequence stays inside the clients' 30s)."""
+        is_power = write_dp == DP_POWER
         dps = await self._read_dps()
-        if bool(dps.get(status_dp, False)) == desired:
+        current = self._power_from(dps) if is_power else bool(dps.get(status_dp, False))
+        if current == desired:
             return self.state()
         await self.set_dp(write_dp, desired)  # flips it to `desired`
         if status_dp != write_dp:
             self._stick(status_dp, desired)
-        confirmed = await self._await_status(status_dp, desired,
+        watch = (status_dp, write_dp) if is_power else (status_dp,)
+        confirmed = await self._await_status(watch, desired,
                                              delays=(0.5, 1.0, 1.5) if quick else (0.5, 1.0, 1.5, 2.0))
         if confirmed:
             return self.state()
@@ -350,8 +368,8 @@ class SaunaClient:
             → second toggle → cabin back on → heater verifies ✓
         Either way we end powered + heating, or raise honestly."""
         dps = await self._read_dps()
-        if not bool(dps.get(DP_POWER_STATUS, False)):
-            # reports off — no ambiguity: verified power-on, then heater
+        if not self._power_from(dps):
+            # reports off (by the trustworthy composite): verified power-on, then heater
             await self._set_bool(DP_POWER, DP_POWER_STATUS, True)
             return await self._set_bool(DP_HEATER, DP_HEATER, True)
         # reports on — possibly phantom; prove it with the heater, recover with toggles
